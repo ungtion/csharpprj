@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Security;
 using System.Windows;
@@ -26,7 +27,6 @@ public partial class MainWindow : Window
         _simulationTimer.Start();
         Closed += (_, _) => _simulationTimer.Stop();
     }
-
     private void UpdateDisplay()
     {
         var now = DateTime.Now;
@@ -43,8 +43,15 @@ public partial class MainWindow : Window
         EfficiencyText.Text = efficiency.ToString("F1");
 
     }
-
+//
     private void ScanPortsClick(object sender, RoutedEventArgs e) => ScanSerialPorts();
+
+    private void ScanxxClick(object sender, RoutedEventArgs e) => somesyco();
+
+    private void ScanxxxsClick(object sender, RoutedEventArgs e) => someresyco();
+
+    // 未被 XAML 引用；如需绑定 Click，请使用 RoutedEventArgs
+    private void recycol(object sender, RoutedEventArgs e) => sometouch(sender, e);
 
     private void OverviewNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(OverviewPage, OverviewNavButton, "设备总览");
@@ -122,6 +129,32 @@ public partial class MainWindow : Window
         page.BeginAnimation(UIElement.OpacityProperty, fadeIn);
         page.RenderTransform.BeginAnimation(TranslateTransform.YProperty, slideUp);
     }
+    int i =1;
+    private void sometouch(object sender, RoutedEventArgs e)
+    {
+        
+        if (i!=0)
+        {   i = i+1;
+            Debug.WriteLine($"why touch me? touch time:{i}!");
+        }
+    }
+
+    private void someresyco()
+    {
+        int retime=0;
+        while(retime==0)
+        {   retime++;
+            Debug.WriteLine($"retime{retime}");
+        }
+    }
+    private void somesyco()
+    {
+        for (var i = 0; i < 10; i++)
+        {
+            Debug.WriteLine($"hello {i}");
+        }
+    }
+
 
     private void ScanSerialPorts()
     {

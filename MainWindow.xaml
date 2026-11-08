@@ -71,11 +71,11 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="250" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="250" /><!-- 第 0 列：固定 250 像素（侧边栏） -->
+            <ColumnDefinition Width="*" /><!-- 第 1 列：占剩余全部（主内容区） -->
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="#172337">
+        <Border Grid.Column="0" Background="#172337"><!-- 侧边栏 -->
             <DockPanel Margin="18,22" LastChildFill="False">
                 <StackPanel DockPanel.Dock="Top">
                     <StackPanel Orientation="Horizontal" Margin="4,2,0,32">
@@ -152,10 +152,10 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.Column="1" Background="#F1F4F8">
+        <Grid Grid.Column="1" Background="#F1F4F8"><!-- 右侧内容 -->
             <Grid.RowDefinitions>
-                <RowDefinition Height="58" />
-                <RowDefinition Height="*" />
+                <RowDefinition Height="58" /><!-- 第 0 行：顶栏，固定 58 -->
+                <RowDefinition Height="*" /> <!-- 第 1 行：页面内容，占剩余高度 -->
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Background="White" BorderBrush="#E3E8EF" BorderThickness="0,0,0,1">
@@ -386,10 +386,21 @@
                                 <Grid Margin="0,0,0,8">
                                     <TextBlock Text="串口（COM）扫描" Foreground="#344256" FontSize="11"
                                                FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <Button Content="扫描" Click="ScanPortsClick"
-                                            HorizontalAlignment="Right" Padding="10,4"
-                                            Background="#E8F6F2" Foreground="#16866F"
-                                            BorderThickness="0" FontSize="10" Cursor="Hand" />
+                                    <StackPanel Orientation="Horizontal"
+                                                HorizontalAlignment="Right">
+                                        <Button Content="扫描" Click="ScanPortsClick"
+                                                Padding="10,4" Margin="0,0,6,0"
+                                                Background="#E8F6F2" Foreground="#16866F"
+                                                BorderThickness="0" FontSize="10" Cursor="Hand" />
+                                        <Button Content="xx" Click="ScanxxClick"
+                                                Padding="10,4"
+                                                Background="#E8F6F2" Foreground="#16866F"
+                                                BorderThickness="0" FontSize="10" Cursor="Hand" />
+                                        <Button Content="xxx" Click="ScanxxxsClick"
+                                                Padding="10,4"
+                                                Background="#E8F6F2" Foreground="#16866F"
+                                                BorderThickness="0" FontSize="10" Cursor="Hand" />
+                                    </StackPanel>
                                 </Grid>
                                 <ComboBox x:Name="PortComboBox" Height="30" FontSize="10"
                                           IsEditable="False" ToolTip="选择系统检测到的串口" />
@@ -599,6 +610,12 @@
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel Style="{StaticResource PageContentStyle}">
                     <TextBlock Text="bake 示例" Foreground="#253248" FontSize="22" FontWeight="SemiBold" />
+                    
+                    <Button Content="why touch me?" Click="sometouch"
+                            Padding="10,4" Margin="0,0,6,0"
+                            Background="#E8F6F2" Foreground="#16866F"
+                            BorderThickness="0" FontSize="50" Cursor="Hand" />
+
                     <TextBlock Text="工艺配方信息展示示例"
                                Foreground="#8290A3" FontSize="11" Margin="0,5,0,18" />
                     <Border Style="{StaticResource CardStyle}">
