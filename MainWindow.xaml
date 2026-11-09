@@ -99,6 +99,17 @@
                                        FontSize="12" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+
+                    <Button x:Name="NewFileNavButton" Style="{StaticResource NavigationButtonStyle}"
+                            Click="NewFileNavClick">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="▣" Foreground="#58D0B5" FontSize="15" Width="26" />
+                            <TextBlock Text="NewFile"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                       FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
                     <Button x:Name="RealtimeNavButton" Style="{StaticResource NavigationButtonStyle}"
                             Click="RealtimeNavClick">
                         <StackPanel Orientation="Horizontal">
@@ -108,6 +119,7 @@
                                        FontSize="12" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+
                     <Button x:Name="RecipeNavButton" Style="{StaticResource NavigationButtonStyle}"
                             Click="RecipeNavClick">
                         <StackPanel Orientation="Horizontal">
@@ -549,6 +561,60 @@
                     <TextBlock Text="设备监控中心 · 演示界面 / 数据为模拟值，不用于实际生产控制"
                                Foreground="#9AA5B3" FontSize="9" HorizontalAlignment="Center"
                                Margin="0,4,0,0" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="NewFilePage" Grid.Row="1" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel Style="{StaticResource PageContentStyle}">
+                    <TextBlock Text="New File" Foreground="#253248" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="测点当前值与运行状态示例"
+                               Foreground="#8290A3" FontSize="11" Margin="0,5,0,18" />
+                    <UniformGrid Columns="2">
+                        <Border Style="{StaticResource CardStyle}" Margin="0,0,8,8">
+                            <StackPanel>
+                                <TextBlock Text="出料温度" Foreground="#718096" FontSize="12" />
+                                <TextBlock Text="{Binding Text, ElementName=TemperatureText, StringFormat={}{0} °C}"
+                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
+                                <TextBlock Text="模拟测点 · 更新周期 1 秒"
+                                           Foreground="#8290A3" FontSize="10" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="8,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="管路压力" Foreground="#718096" FontSize="12" />
+                                <TextBlock Text="{Binding Text, ElementName=PressureText, StringFormat={}{0} MPa}"
+                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
+                                <TextBlock Text="正常范围 0.40–0.80 MPa"
+                                           Foreground="#8290A3" FontSize="10" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,8,8,0">
+                            <StackPanel>
+                                <TextBlock Text="主轴转速" Foreground="#718096" FontSize="12" />
+                                <TextBlock Text="{Binding Text, ElementName=SpeedText, StringFormat={}{0} rpm}"
+                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
+                                <TextBlock Text="额定转速 1500 rpm"
+                                           Foreground="#8290A3" FontSize="10" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Margin="8,8,0,0">
+                            <StackPanel>
+                                <TextBlock Text="设备稼动率" Foreground="#718096" FontSize="12" />
+                                <TextBlock Text="{Binding Text, ElementName=EfficiencyText, StringFormat={}{0} %}"
+                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
+                                <TextBlock Text="本班次模拟统计"
+                                           Foreground="#8290A3" FontSize="10" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="测点说明" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="当前页面展示的是程序生成的模拟值，不是从 PLC 或传感器读取的数据。接入真实设备后，可在此扩展测点名称、量程、报警上下限及采样状态。"
+                                       Foreground="#718096" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 

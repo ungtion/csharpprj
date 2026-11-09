@@ -1,2 +1,2 @@
 Terminal run
-<dotnet new wpf -n MyWpfApp>
+<dotnet new wpf -n file name>

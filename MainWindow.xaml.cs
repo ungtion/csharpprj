@@ -56,6 +56,9 @@ public partial class MainWindow : Window
     private void OverviewNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(OverviewPage, OverviewNavButton, "设备总览");
 
+    private void NewFileNavClick(object sender, RoutedEventArgs e) =>
+        ShowPage(NewFilePage, NewFileNavButton, "New File");
+
     private void RealtimeNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(RealtimePage, RealtimeNavButton, "实时监控");
 
@@ -76,6 +79,7 @@ public partial class MainWindow : Window
         }
 
         OverviewPage.Visibility = Visibility.Collapsed;
+        NewFilePage.Visibility = Visibility.Collapsed;
         RealtimePage.Visibility = Visibility.Collapsed;
         RecipePage.Visibility = Visibility.Collapsed;
         AlarmPage.Visibility = Visibility.Collapsed;
@@ -86,6 +90,7 @@ public partial class MainWindow : Window
         foreach (var button in new[]
                  {
                      OverviewNavButton,
+                     NewFileNavButton,
                      RealtimeNavButton,
                      RecipeNavButton,
                      AlarmNavButton,
