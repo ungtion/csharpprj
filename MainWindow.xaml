@@ -11,7 +11,7 @@
         Background="#F1F4F8"
         FontFamily="Segoe UI">
     <Window.Resources>
-        <!-- 主题色板：XAML 与代码（MainWindow.ThemeBrush）共用，避免同一颜色在多处硬编码 -->
+        <!-- 主题色板：XAML 与代码（MainWindow.ThemeBrush）共用，避免同一颜色在多处硬编码。 -->
         <SolidColorBrush x:Key="BrandBrush" Color="#16866F" />
         <SolidColorBrush x:Key="BrandSoftBrush" Color="#E8F6F2" />
         <SolidColorBrush x:Key="TextPrimaryBrush" Color="#344256" />
@@ -25,6 +25,7 @@
         <SolidColorBrush x:Key="InputBorderBrush" Color="#CBD3DE" />
         <SolidColorBrush x:Key="InputSurfaceBrush" Color="#F8FAFC" />
 
+        <!-- 卡片类容器共享白底、边框、圆角和内边距。 -->
         <Style x:Key="CardStyle" TargetType="Border">
             <Setter Property="Background" Value="White" />
             <Setter Property="BorderBrush" Value="#E5EAF0" />
@@ -41,6 +42,7 @@
             <Setter Property="Foreground" Value="#8290A3" />
             <Setter Property="FontSize" Value="11" />
         </Style>
+        <!-- 导航按钮由 MainWindow.ShowPage 更新 Background / Foreground；模板只负责圆角和悬停效果。 -->
         <Style x:Key="NavigationButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#C3CBD6" />
@@ -83,13 +85,15 @@
         </Style>
     </Window.Resources>
 
+    <!-- 两列主框架：左侧固定宽度导航，右侧包含顶栏与可滚动页面。 -->
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="250" /><!-- 第 0 列：固定 250 像素（侧边栏） -->
             <ColumnDefinition Width="*" /><!-- 第 1 列：占剩余全部（主内容区） -->
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="#172337"><!-- 侧边栏 -->
+        <!-- 左侧导航区：顶部导航项固定，运行环境信息停靠在底部。 -->
+        <Border Grid.Column="0" Background="#172337">
             <DockPanel Margin="18,22" LastChildFill="False">
                 <StackPanel DockPanel.Dock="Top">
                     <StackPanel Orientation="Horizontal" Margin="4,2,0,32">
@@ -172,18 +176,21 @@
                         </StackPanel>
                         <TextBlock Text="未连接 PLC / 控制器" Foreground="#91A0B4" FontSize="10"
                                    Margin="0,7,0,0" />
+                        <!-- 原型阶段的静态环境备注；实际接入后替换为应用版本或设备标识。 -->
                         <TextBlock Text="test" Foreground="#91A0B4" FontSize="10" />
                     </StackPanel>
                 </Border>
             </DockPanel>
         </Border>
 
-        <Grid Grid.Column="1" Background="#F1F4F8"><!-- 右侧内容 -->
+        <!-- 右侧内容区：顶栏显示面包屑与时间，第二行由六个互斥页面共享。 -->
+        <Grid Grid.Column="1" Background="#F1F4F8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="58" /><!-- 第 0 行：顶栏，固定 58 -->
                 <RowDefinition Height="*" /> <!-- 第 1 行：页面内容，占剩余高度 -->
             </Grid.RowDefinitions>
 
+            <!-- 顶栏时钟与模拟数据标记；实际设备接入后应同步调整状态文案。 -->
             <Border Grid.Row="0" Background="White" BorderBrush="#E3E8EF" BorderThickness="0,0,0,1">
                 <Grid Margin="24,0" MaxWidth="1480">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -201,6 +208,7 @@
                 </Grid>
             </Border>
 
+            <!-- 首页：设备摘要、实时模拟测点、工艺流程、串口扫描/通信、趋势和事件。 -->
             <ScrollViewer x:Name="OverviewPage" Grid.Row="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel Style="{StaticResource PageContentStyle}">
                     <Grid Margin="0,0,0,18">
@@ -691,6 +699,7 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- 以下是非设备控制页面；测点卡通过 ElementName 绑定复用首页的模拟值。 -->
             <ScrollViewer x:Name="NewFilePage" Grid.Row="1" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel Style="{StaticResource PageContentStyle}">
@@ -799,6 +808,7 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- 工艺配方为只读示例，不向设备下发参数；计次按钮仅用于演示事件绑定。 -->
             <ScrollViewer x:Name="RecipePage" Grid.Row="1" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel Style="{StaticResource PageContentStyle}">
@@ -848,6 +858,7 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- 报警列表是静态样例，尚未接入实时报警、确认与历史存储。 -->
             <ScrollViewer x:Name="AlarmPage" Grid.Row="1" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel Style="{StaticResource PageContentStyle}">
@@ -919,6 +930,7 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- 系统信息页展示当前示例的框架、通信方式和非生产用途提示。 -->
             <ScrollViewer x:Name="SystemPage" Grid.Row="1" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel Style="{StaticResource PageContentStyle}">

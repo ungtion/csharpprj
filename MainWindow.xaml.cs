@@ -13,7 +13,7 @@ using Microsoft.Win32;
 namespace CSharpProject;
 
 /// <summary>
-/// 设备监控中心主窗口。界面由左侧导航、顶部面包屑、页面容器和底部状态栏组成，
+/// 设备监控中心主窗口。界面由左侧导航、顶部面包屑、页面容器和运行环境提示组成，
 /// 页面容器同样是六个互斥显示的 ScrollViewer（设备总览 / NewFile / 实时监控 / bake / 报警记录 / 系统信息）。
 /// <para>
 /// 测点数值目前由 <see cref="UpdateSimulationDisplay"/> 生成模拟值，尚未接入 PLC；
@@ -60,14 +60,17 @@ public partial class MainWindow : Window
         Closed += (_, _) => ShutdownCommunication();
     }
 
-    // 导航按钮与页面按相同顺序排列，便于统一切换显示与选中样式
+    // 导航按钮和页面按同一顺序排列；新增页面时需同步更新这两个集合
     private Button[] NavigationButtons =>
         [OverviewNavButton, NewFileNavButton, RealtimeNavButton, RecipeNavButton, AlarmNavButton, SystemNavButton];
 
     private UIElement[] NavigationPages =>
         [OverviewPage, NewFilePage, RealtimePage, RecipePage, AlarmPage, SystemPage];
 
-    /// <summary>停止定时器并释放串口，避免端口在进程退出前一直被占用。</summary>
+    /// <summary>
+    /// 窗口关闭时统一停止定时器并释放会话资源，避免端口在进程退出前一直被占用。
+    /// 先停止刷新计时器，确保释放串口后不再轮询接收缓冲区。
+    /// </summary>
     private void ShutdownCommunication()
     {
         _simulationTimer.Stop();
@@ -96,10 +99,12 @@ public partial class MainWindow : Window
         EfficiencyText.Text = efficiency.ToString("F1");
     }
 
-    /// <summary>重新枚举系统串口，供“扫描”按钮调用。</summary>
+    /// <summary>重新枚举系统串口，供设备状态卡片中的“扫描”按钮调用。</summary>
     private void ScanPortsClick(object sender, RoutedEventArgs e) => ScanSerialPorts();
 
-    /// <summary>把接收区内容复制到剪贴板，便于把现场日志贴给同事或存档。</summary>
+    /// <summary>
+    /// 把当前接收区内容复制到剪贴板。先取文本快照再追加操作日志，避免“复制成功”提示被包含进复制内容。
+    /// </summary>
     private void CopyCommunicationLogClick(object sender, RoutedEventArgs e)
     {
         var content = ReceiveTextBox.Text;
@@ -121,7 +126,9 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>把接收区内容另存为 UTF-8 文本文件。</summary>
+    /// <summary>
+    /// 把当前接收区内容另存为 UTF-8 文本文件。用户取消保存对话框时不改动接收区。
+    /// </summary>
     private void SaveCommunicationLogClick(object sender, RoutedEventArgs e)
     {
         var content = ReceiveTextBox.Text;
@@ -153,7 +160,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // ===== 页面导航 =====
+    // ===== 页面导航：按钮事件只声明目标页，其余切换工作统一交给 ShowPage =====
 
     private void OverviewNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(OverviewPage, OverviewNavButton, "设备总览");
@@ -292,7 +299,7 @@ public partial class MainWindow : Window
 
     // ===== 串口通信：打开 / 关闭 / 发送 / 接收 =====
 
-    // 同一个按钮承担开与关，先看会话实际状态再决定动作
+    // 同一个按钮承担开与关，以会话状态为准，不依赖按钮当前显示的文案
     private void TogglePortClick(object sender, RoutedEventArgs e)
     {
         if (_serialSession.IsOpen)
@@ -306,7 +313,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 打开所选串口。端口被占用、设备已拔出等失败只在接收区提示，不向调用方抛出。
+    /// 用当前端口和波特率打开串口。端口被占用、参数无效等预期错误会写入接收区，
+    /// 不让异常越过 WPF 按钮事件处理器。
     /// </summary>
     private void OpenSerialPort()
     {
@@ -332,7 +340,10 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>关闭并释放串口，同时把界面恢复到“未连接”状态。</summary>
+    /// <summary>
+    /// 关闭并释放串口，同时把界面恢复到“未连接”状态。
+    /// 即使底层关闭时报告错误，也要复位界面，避免继续向已失效端口发送。
+    /// </summary>
     private void CloseSerialPort()
     {
         var wasOpen = _serialSession.IsOpen;
@@ -353,8 +364,9 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 发送输入框内容。文本模式按 UTF-8 写出；十六进制模式解析成字节，
-    /// 需要时在帧尾追加 Modbus RTU 的 CRC16（低字节在前）。
+    /// 发送输入框内容。文本模式按 UTF-8 写出；十六进制模式解析为原始字节，
+    /// 并可选在帧尾追加 Modbus RTU CRC16（低字节在前）。
+    /// 这里不验证 Modbus 功能码、地址或寄存器数量，只负责字节转换和发送。
     /// </summary>
     private void SendClick(object sender, RoutedEventArgs e)
     {
@@ -406,7 +418,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // 十六进制模式整帧下发，追加 \r\n 会把报文尾的 CRC 冲掉，因此两种模式互斥
+    // 十六进制模式下发送的是完整二进制帧；CRLF 会成为额外帧尾字节，因此禁用文本行终止选项
     private void HexSendModeChanged(object sender, RoutedEventArgs e)
     {
         var hexMode = HexSendCheckBox.IsChecked == true;
@@ -441,8 +453,10 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// 把一段内容追加到接收区，只能在 UI 线程调用。
-    /// receivedBytes 为 0 表示这是程序生成的状态日志，不计入接收字节数。
+    /// <paramref name="receivedBytes"/> 为 0 表示程序生成的状态日志，不计入接收字节数。
     /// </summary>
+    /// <param name="text">要追加的文本。</param>
+    /// <param name="receivedBytes">该段串口数据按当前 UTF-8 编码统计的字节数；日志传 0。</param>
     private void AppendReceiveContent(string text, long receivedBytes)
     {
         if (receivedBytes > 0)

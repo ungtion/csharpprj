@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
+        <!-- 应用级基础颜色资源；Window.Resources 中的监控中心色板覆盖具体页面视觉。 -->
         <SolidColorBrush x:Key="InkBrush" Color="#202735" />
         <SolidColorBrush x:Key="MutedBrush" Color="#8791A2" />
         <SolidColorBrush x:Key="AccentBrush" Color="#6658E8" />
