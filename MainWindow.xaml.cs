@@ -341,7 +341,8 @@ public partial class MainWindow : Window
         AppendSerialLog("串口已关闭。");
     }
 
-    // 发送区内容写入串口；勾选“追加 \r\n”时补 CRLF，便于行协议设备（AT 指令等）识别一帧结束
+    // 发送：文本模式按 UTF-8 写字符串；十六进制模式先解析成字节再写，
+    // 可追加 Modbus RTU 的 CRC16（低字节在前），直接下发 01 03 00 00 00 0A 这类报文
     private void SendClick(object sender, RoutedEventArgs e)
     {
         if (_serialPort is not { IsOpen: true } serialPort)
@@ -356,13 +357,33 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (AppendCrLfCheckBox.IsChecked == true)
-        {
-            payload += "\r\n";
-        }
-
         try
         {
+            if (HexSendCheckBox.IsChecked == true)
+            {
+                if (!TryParseHexPayload(payload, out var frame))
+                {
+                    AppendSerialLog("十六进制内容无效：只能包含 0-9、A-F 和空格/逗号等分隔符，且字节须成对。");
+                    return;
+                }
+
+                if (AppendModbusCrcCheckBox.IsChecked == true)
+                {
+                    var crc = ModbusCrc16.Compute(frame);
+                    AppendSerialLog($"Modbus CRC16 = 0x{crc:X4}（帧尾字节 {ModbusCrc16.ToByteText(crc)}）");
+                    frame = ModbusCrc16.Append(frame);
+                }
+
+                serialPort.Write(frame, 0, frame.Length);
+                AppendSerialLog($"发送 {frame.Length} 字节：{FormatHexBytes(frame)}");
+                return;
+            }
+
+            if (AppendCrLfCheckBox.IsChecked == true)
+            {
+                payload += "\r\n";
+            }
+
             serialPort.Write(payload);
             AppendSerialLog($"发送 {payload.Length} 字符：{EscapeForLog(payload)}");
         }
@@ -371,6 +392,54 @@ public partial class MainWindow : Window
             AppendSerialLog($"发送失败：{exception.Message}");
         }
     }
+
+    // 十六进制模式整帧下发，追加 \r\n 会把报文尾的 CRC 冲掉，因此两种模式互斥
+    private void HexSendChanged(object sender, RoutedEventArgs e)
+    {
+        var hexMode = HexSendCheckBox.IsChecked == true;
+        AppendCrLfCheckBox.IsEnabled = !hexMode;
+        AppendModbusCrcCheckBox.IsEnabled = hexMode;
+    }
+
+    // 解析 "01 03 00 00 00 0A"、"0x01,0x03" 这类写法；分隔符与 0x 前缀都会被忽略
+    private static bool TryParseHexPayload(string text, out byte[] bytes)
+    {
+        bytes = [];
+        var normalized = text.Replace("0x", string.Empty, StringComparison.OrdinalIgnoreCase);
+        var digits = new StringBuilder(normalized.Length);
+        foreach (var character in normalized)
+        {
+            if (char.IsWhiteSpace(character) || character is ',' or '-' or ';' or ':')
+            {
+                continue;
+            }
+
+            if (!Uri.IsHexDigit(character))
+            {
+                return false;
+            }
+
+            digits.Append(character);
+        }
+
+        if (digits.Length == 0 || digits.Length % 2 != 0)
+        {
+            return false;
+        }
+
+        var result = new byte[digits.Length / 2];
+        for (var index = 0; index < result.Length; index++)
+        {
+            result[index] = Convert.ToByte(digits.ToString(index * 2, 2), 16);
+        }
+
+        bytes = result;
+        return true;
+    }
+
+    // 十六进制日志用空格分隔，便于和报文手册逐字节对照
+    private static string FormatHexBytes(ReadOnlySpan<byte> bytes) =>
+        string.Join(' ', bytes.ToArray().Select(value => value.ToString("X2")));
 
     // 清空接收区时缓冲区也要一起清，否则下一次刷新会把还没来得及显示的旧数据补回来
     private void ClearReceiveClick(object sender, RoutedEventArgs e)

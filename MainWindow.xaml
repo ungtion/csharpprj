@@ -496,8 +496,12 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- 发送区：支持多行输入；“追加 \r\n”用于行协议设备（如 AT 指令）判断一帧结束 -->
+                            <!-- 发送区：文本模式按 UTF-8 发送；“十六进制发送”用于 Modbus RTU 等二进制报文 -->
                             <Grid Margin="0,0,0,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -508,14 +512,20 @@
                                          VerticalScrollBarVisibility="Auto"
                                          VerticalContentAlignment="Top"
                                          Background="White" BorderBrush="#CBD3DE" BorderThickness="1"
-                                         ToolTip="输入要发送到串口的内容" />
-                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
-                                    <Button x:Name="SendButton" Content="发送" Click="SendClick"
-                                            IsEnabled="False" Height="32" Width="118"
-                                            Background="#E8F6F2" Foreground="#16866F"
-                                            BorderThickness="0" FontSize="11" Cursor="Hand" />
+                                         ToolTip="文本模式直接输入内容；勾选“十六进制发送”后填写形如 01 03 00 00 00 0A" />
+                                <Button x:Name="SendButton" Grid.Column="1" Content="发送" Click="SendClick"
+                                        IsEnabled="False" Height="32" Width="118" Margin="10,0,0,0"
+                                        VerticalAlignment="Top"
+                                        Background="#E8F6F2" Foreground="#16866F"
+                                        BorderThickness="0" FontSize="11" Cursor="Hand" />
+                                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,8,0,0">
                                     <CheckBox x:Name="AppendCrLfCheckBox" Content="追加 \r\n" IsChecked="True"
-                                              FontSize="10" Foreground="#718096" Margin="0,8,0,0" />
+                                              FontSize="10" Foreground="#718096" Margin="0,0,18,0" />
+                                    <CheckBox x:Name="HexSendCheckBox" Content="十六进制发送"
+                                              Checked="HexSendChanged" Unchecked="HexSendChanged"
+                                              FontSize="10" Foreground="#718096" Margin="0,0,18,0" />
+                                    <CheckBox x:Name="AppendModbusCrcCheckBox" Content="追加 Modbus CRC"
+                                              IsEnabled="False" FontSize="10" Foreground="#718096" />
                                 </StackPanel>
                             </Grid>
 
