@@ -8,4 +8,9 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- WPF 依赖的系统库里没有 SerialPort，.NET Core / .NET 5+ 需通过该包引入 System.IO.Ports -->
+    <PackageReference Include="System.IO.Ports" Version="11.0.0" />
+  </ItemGroup>
+
 </Project>

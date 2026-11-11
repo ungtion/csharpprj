@@ -20,6 +20,7 @@
 设备运行状态横幅：显示整体运行提示和更新时间，见 设备状态横幅。
 测点卡片：用 UniformGrid Columns="4" 横向摆放温度、压力、转速、稼动率四张卡片，见 测点卡片区。
 流程和设备状态：一个双列 Grid，左边显示工艺流程，右边显示设备状态和串口扫描，见 流程与设备状态区。
+串口通信：紧随其后的全宽卡片，负责打开/关闭端口、选择波特率并收发数据（`System.IO.Ports`），接收区通过 DispatcherTimer 定时刷新，见 串口通信区。
 趋势和报警事件：另一个双列 Grid，左侧是参数趋势，右侧是报警与事件，见 趋势与事件区。
 双列布局中的列宽用比例分配，例如 1.55* 和 0.95*：左侧区域比右侧区域宽。
 
@@ -277,7 +278,7 @@ BindingOperations.EnableCollectionSynchronization(_items, _lock);
 <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
 ```
 
-否则 `Windows.Devices.*` 命名空间根本编译不过。串口则不需要改，只要加 `System.IO.Ports` 包。
+否则 `Windows.Devices.*` 命名空间根本编译不过。串口则不需要改 TFM，只要引用 `System.IO.Ports` 包（本项目已添加 `11.0.0`）。
 
 ## 五、给你项目的落地模板
 

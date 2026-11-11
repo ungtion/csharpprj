@@ -8,6 +8,7 @@
         <SolidColorBrush x:Key="AccentBrush" Color="#6658E8" />
         <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
         <SolidColorBrush x:Key="CanvasBrush" Color="#F5F6FA" />
+        <!-- 全局默认样式：按钮与文本框默认无边框（扁平风格），需要边框的控件需自身显式设置 BorderThickness -->
         <Style TargetType="Button">
             <Setter Property="FontFamily" Value="Segoe UI" />
             <Setter Property="FontSize" Value="14" />

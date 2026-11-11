@@ -444,6 +444,99 @@
                         </Border>
                     </Grid>
 
+                    <!-- 串口通信：端口列表与上方“串口（COM）扫描”共用，打开端口后可收发数据 -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,14">
+                                <StackPanel>
+                                    <TextBlock Text="串口通信" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="选择端口与波特率后打开串口，即可接收并发送数据"
+                                               Style="{StaticResource MutedTextStyle}" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <!-- 连接状态，由 UpdateSerialPortState 更新 -->
+                                <TextBlock x:Name="SerialStatusText" Text="未连接"
+                                           Foreground="#9AA5B3" FontSize="11"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <!-- 端口 / 波特率 / 打开关闭：串口打开后这几项会被禁用，避免运行中改参数 -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="170" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="130" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="端口" Foreground="#718096" FontSize="11"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <!-- ItemsSource / SelectedItem 双向绑定到上方扫描下拉框，两个下拉框始终同步 -->
+                                <ComboBox x:Name="SerialPortComboBox" Grid.Column="1" Height="30" FontSize="11"
+                                          ItemsSource="{Binding ItemsSource, ElementName=PortComboBox}"
+                                          SelectedItem="{Binding SelectedItem, ElementName=PortComboBox, Mode=TwoWay}"
+                                          ToolTip="与上方“串口（COM）扫描”共用同一端口列表" />
+                                <TextBlock Grid.Column="2" Text="波特率" Foreground="#718096" FontSize="11"
+                                           VerticalAlignment="Center" Margin="14,0,8,0" />
+                                <ComboBox x:Name="BaudRateComboBox" Grid.Column="3" Height="30" FontSize="11"
+                                          SelectedIndex="4" ToolTip="数据位 8 / 校验 None / 停止位 1">
+                                    <ComboBoxItem Content="9600" />
+                                    <ComboBoxItem Content="19200" />
+                                    <ComboBoxItem Content="38400" />
+                                    <ComboBoxItem Content="57600" />
+                                    <ComboBoxItem Content="115200" />
+                                </ComboBox>
+                                <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button x:Name="TogglePortButton" Content="打开串口" Click="TogglePortClick"
+                                            Height="30" Padding="14,0" Background="#16866F" Foreground="White"
+                                            BorderThickness="0" FontSize="11" Cursor="Hand" />
+                                    <Button Content="清空接收" Click="ClearReceiveClick"
+                                            Height="30" Padding="14,0" Margin="8,0,0,0"
+                                            Background="#F3F5F8" Foreground="#5B6779"
+                                            BorderThickness="0" FontSize="11" Cursor="Hand" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- 发送区：支持多行输入；“追加 \r\n”用于行协议设备（如 AT 指令）判断一帧结束 -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <!-- 隐式 TextBox 样式是 BorderThickness=0 / 灰底，这里显式改成白底带边框的输入框外观 -->
+                                <TextBox x:Name="SendTextBox" Height="58" FontSize="11" Padding="8,6"
+                                         AcceptsReturn="True" TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         VerticalContentAlignment="Top"
+                                         Background="White" BorderBrush="#CBD3DE" BorderThickness="1"
+                                         ToolTip="输入要发送到串口的内容" />
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
+                                    <Button x:Name="SendButton" Content="发送" Click="SendClick"
+                                            IsEnabled="False" Height="32" Width="118"
+                                            Background="#E8F6F2" Foreground="#16866F"
+                                            BorderThickness="0" FontSize="11" Cursor="Hand" />
+                                    <CheckBox x:Name="AppendCrLfCheckBox" Content="追加 \r\n" IsChecked="True"
+                                              FontSize="10" Foreground="#718096" Margin="0,8,0,0" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- 接收区：只读文本框，由 FlushReceiveBuffer 每 60ms 批量刷新；等宽字体便于对齐设备输出 -->
+                            <Grid Margin="0,0,0,6">
+                                <TextBlock Text="接收区" Foreground="#344256" FontSize="11"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="ReceiveCountText" Text="已接收 0 字节"
+                                           Foreground="#9AA5B3" FontSize="10"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBox x:Name="ReceiveTextBox" Height="170" IsReadOnly="True"
+                                     FontFamily="Consolas" FontSize="11" Padding="8,6"
+                                     TextWrapping="Wrap" AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     VerticalContentAlignment="Top"
+                                     Background="#F8FAFC" BorderBrush="#CBD3DE" BorderThickness="1" />
+                        </StackPanel>
+                    </Border>
+
                     <Grid Margin="0,0,0,14">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1.55*" />
@@ -811,8 +904,8 @@
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Text=".NET 目标框架" Foreground="#8290A3" FontSize="10" />
                                     <TextBlock Text=".NET 10.0 Windows / WPF" Foreground="#344256" FontSize="12" Margin="0,5,0,14" />
-                                    <TextBlock Text="串口扫描" Foreground="#8290A3" FontSize="10" />
-                                    <TextBlock Text="从 Windows 系统枚举 COM 端口，不代表已建立通信。"
+                                    <TextBlock Text="串口通信" Foreground="#8290A3" FontSize="10" />
+                                    <TextBlock Text="从 Windows 系统枚举 COM 端口，并在“串口通信”面板中打开端口收发数据。"
                                                Foreground="#344256" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,14" />
                                     <TextBlock Text="安全提示" Foreground="#8290A3" FontSize="10" />
                                     <TextBlock Text="示例界面不用于实际生产设备控制。"
