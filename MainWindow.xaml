@@ -11,6 +11,20 @@
         Background="#F1F4F8"
         FontFamily="Segoe UI">
     <Window.Resources>
+        <!-- 主题色板：XAML 与代码（MainWindow.ThemeBrush）共用，避免同一颜色在多处硬编码 -->
+        <SolidColorBrush x:Key="BrandBrush" Color="#16866F" />
+        <SolidColorBrush x:Key="BrandSoftBrush" Color="#E8F6F2" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#344256" />
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#8290A3" />
+        <SolidColorBrush x:Key="TextSubtleBrush" Color="#9AA5B3" />
+        <SolidColorBrush x:Key="StateSuccessBrush" Color="#2E8B57" />
+        <SolidColorBrush x:Key="StateWarningBrush" Color="#D2942F" />
+        <SolidColorBrush x:Key="StateDangerBrush" Color="#B22222" />
+        <SolidColorBrush x:Key="NavigationForegroundBrush" Color="#C3CBD6" />
+        <SolidColorBrush x:Key="NavigationActiveBackgroundBrush" Color="#24423F" />
+        <SolidColorBrush x:Key="InputBorderBrush" Color="#CBD3DE" />
+        <SolidColorBrush x:Key="InputSurfaceBrush" Color="#F8FAFC" />
+
         <Style x:Key="CardStyle" TargetType="Border">
             <Setter Property="Background" Value="White" />
             <Setter Property="BorderBrush" Value="#E5EAF0" />
@@ -402,15 +416,21 @@
                                                 HorizontalAlignment="Right">
                                         <Button Content="扫描" Click="ScanPortsClick"
                                                 Padding="10,4" Margin="0,0,6,0"
-                                                Background="#E8F6F2" Foreground="#16866F"
+                                                Background="{StaticResource BrandSoftBrush}"
+                                                Foreground="{StaticResource BrandBrush}"
+                                                ToolTip="重新枚举系统串口"
                                                 BorderThickness="0" FontSize="10" Cursor="Hand" />
-                                        <Button Content="xx" Click="ScanxxClick"
-                                                Padding="10,4"
-                                                Background="#E8F6F2" Foreground="#16866F"
+                                        <Button Content="复制日志" Click="CopyCommunicationLogClick"
+                                                Padding="10,4" Margin="0,0,6,0"
+                                                Background="{StaticResource BrandSoftBrush}"
+                                                Foreground="{StaticResource BrandBrush}"
+                                                ToolTip="把接收区内容复制到剪贴板"
                                                 BorderThickness="0" FontSize="10" Cursor="Hand" />
-                                        <Button Content="xxx" Click="ScanxxxsClick"
+                                        <Button Content="保存日志" Click="SaveCommunicationLogClick"
                                                 Padding="10,4"
-                                                Background="#E8F6F2" Foreground="#16866F"
+                                                Background="{StaticResource BrandSoftBrush}"
+                                                Foreground="{StaticResource BrandBrush}"
+                                                ToolTip="把接收区内容另存为文本文件"
                                                 BorderThickness="0" FontSize="10" Cursor="Hand" />
                                     </StackPanel>
                                 </Grid>
@@ -453,9 +473,9 @@
                                     <TextBlock Text="选择端口与波特率后打开串口，即可接收并发送数据"
                                                Style="{StaticResource MutedTextStyle}" Margin="0,4,0,0" />
                                 </StackPanel>
-                                <!-- 连接状态，由 UpdateSerialPortState 更新 -->
+                                <!-- 连接状态，由 UpdateSerialConnectionUi 更新 -->
                                 <TextBlock x:Name="SerialStatusText" Text="未连接"
-                                           Foreground="#9AA5B3" FontSize="11"
+                                           Foreground="{StaticResource TextSubtleBrush}" FontSize="11"
                                            HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
 
@@ -487,7 +507,8 @@
                                 </ComboBox>
                                 <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button x:Name="TogglePortButton" Content="打开串口" Click="TogglePortClick"
-                                            Height="30" Padding="14,0" Background="#16866F" Foreground="White"
+                                            Height="30" Padding="14,0"
+                                            Background="{StaticResource BrandBrush}" Foreground="White"
                                             BorderThickness="0" FontSize="11" Cursor="Hand" />
                                     <Button Content="清空接收" Click="ClearReceiveClick"
                                             Height="30" Padding="14,0" Margin="8,0,0,0"
@@ -511,30 +532,32 @@
                                          AcceptsReturn="True" TextWrapping="Wrap"
                                          VerticalScrollBarVisibility="Auto"
                                          VerticalContentAlignment="Top"
-                                         Background="White" BorderBrush="#CBD3DE" BorderThickness="1"
+                                         Background="White" BorderBrush="{StaticResource InputBorderBrush}"
+                                         BorderThickness="1"
                                          ToolTip="文本模式直接输入内容；勾选“十六进制发送”后填写形如 01 03 00 00 00 0A" />
                                 <Button x:Name="SendButton" Grid.Column="1" Content="发送" Click="SendClick"
                                         IsEnabled="False" Height="32" Width="118" Margin="10,0,0,0"
                                         VerticalAlignment="Top"
-                                        Background="#E8F6F2" Foreground="#16866F"
+                                        Background="{StaticResource BrandSoftBrush}"
+                                        Foreground="{StaticResource BrandBrush}"
                                         BorderThickness="0" FontSize="11" Cursor="Hand" />
                                 <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,8,0,0">
                                     <CheckBox x:Name="AppendCrLfCheckBox" Content="追加 \r\n" IsChecked="True"
                                               FontSize="10" Foreground="#718096" Margin="0,0,18,0" />
                                     <CheckBox x:Name="HexSendCheckBox" Content="十六进制发送"
-                                              Checked="HexSendChanged" Unchecked="HexSendChanged"
+                                              Checked="HexSendModeChanged" Unchecked="HexSendModeChanged"
                                               FontSize="10" Foreground="#718096" Margin="0,0,18,0" />
                                     <CheckBox x:Name="AppendModbusCrcCheckBox" Content="追加 Modbus CRC"
                                               IsEnabled="False" FontSize="10" Foreground="#718096" />
                                 </StackPanel>
                             </Grid>
 
-                            <!-- 接收区：只读文本框，由 FlushReceiveBuffer 每 60ms 批量刷新；等宽字体便于对齐设备输出 -->
+                            <!-- 接收区：只读文本框，由 RefreshSerialReceiveArea 每 60ms 批量刷新；等宽字体便于对齐设备输出 -->
                             <Grid Margin="0,0,0,6">
-                                <TextBlock Text="接收区" Foreground="#344256" FontSize="11"
+                                <TextBlock Text="接收区" Foreground="{StaticResource TextPrimaryBrush}" FontSize="11"
                                            FontWeight="SemiBold" VerticalAlignment="Center" />
                                 <TextBlock x:Name="ReceiveCountText" Text="已接收 0 字节"
-                                           Foreground="#9AA5B3" FontSize="10"
+                                           Foreground="{StaticResource TextSubtleBrush}" FontSize="10"
                                            HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </Grid>
                             <TextBox x:Name="ReceiveTextBox" Height="170" IsReadOnly="True"
@@ -543,7 +566,8 @@
                                      VerticalScrollBarVisibility="Auto"
                                      HorizontalScrollBarVisibility="Disabled"
                                      VerticalContentAlignment="Top"
-                                     Background="#F8FAFC" BorderBrush="#CBD3DE" BorderThickness="1" />
+                                     Background="{StaticResource InputSurfaceBrush}"
+                                     BorderBrush="{StaticResource InputBorderBrush}" BorderThickness="1" />
                         </StackPanel>
                     </Border>
 
@@ -780,10 +804,16 @@
                 <StackPanel Style="{StaticResource PageContentStyle}">
                     <TextBlock Text="bake 示例" Foreground="#253248" FontSize="22" FontWeight="SemiBold" />
                     
-                    <Button Content="why touch me?" Click="sometouch"
-                            Padding="10,4" Margin="0,0,6,0"
-                            Background="#E8F6F2" Foreground="#16866F"
-                            BorderThickness="0" FontSize="50" Cursor="Hand" />
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="计次示例" Click="DemoClickCountClick"
+                                Padding="18,8"
+                                Background="{StaticResource BrandSoftBrush}"
+                                Foreground="{StaticResource BrandBrush}"
+                                BorderThickness="0" FontSize="13" Cursor="Hand" />
+                        <TextBlock x:Name="DemoClickCountText" Text="已点击 0 次"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" />
+                    </StackPanel>
 
                     <TextBlock Text="工艺配方信息展示示例"
                                Foreground="#8290A3" FontSize="11" Margin="0,5,0,18" />

@@ -19,8 +19,8 @@
 标题和设备编号：显示“设备总览”和设备编号，见 页面标题区。
 设备运行状态横幅：显示整体运行提示和更新时间，见 设备状态横幅。
 测点卡片：用 UniformGrid Columns="4" 横向摆放温度、压力、转速、稼动率四张卡片，见 测点卡片区。
-流程和设备状态：一个双列 Grid，左边显示工艺流程，右边显示设备状态和串口扫描，见 流程与设备状态区。
-串口通信：紧随其后的全宽卡片，负责打开/关闭端口、选择波特率并收发数据（`System.IO.Ports`），接收区通过 DispatcherTimer 定时刷新，见 串口通信区。
+流程和设备状态：一个双列 Grid，左边显示工艺流程，右边显示设备状态和串口扫描（扫描 / 复制日志 / 保存日志三个按钮），见 流程与设备状态区。
+串口通信：紧随其后的全宽卡片，负责打开/关闭端口、选择波特率并收发数据（`System.IO.Ports`），支持文本与十六进制两种发送模式（十六进制可追加 Modbus CRC16），接收区通过 DispatcherTimer 定时刷新，见 串口通信区。
 趋势和报警事件：另一个双列 Grid，左侧是参数趋势，右侧是报警与事件，见 趋势与事件区。
 双列布局中的列宽用比例分配，例如 1.55* 和 0.95*：左侧区域比右侧区域宽。
 
@@ -321,3 +321,16 @@ private void OnSerialData(object? sender, SerialDataReceivedEventArgs e)
 | 集合跨线程修改 | 需手动排队 | `ObservableCollection` 会明确报错，有 `EnableCollectionSynchronization` |
 
 **一句话**：WPF 帮你消灭了"双 loop"这一层，但"UI 线程独占 + 不许阻塞 + 后台回调必须切回 Dispatcher"这三条规矩和 Qt 是一模一样的。你现在只用 `DispatcherTimer`（UI 线程计时器）是安全的，是目前最省心的写法。
+
+## 七、当前工程的文件分工
+
+| 文件 | 职责 |
+|---|---|
+| `MainWindow.xaml` | 界面布局；`Window.Resources` 里集中定义主题色板（`BrandBrush`、`StateDangerBrush` 等），代码通过 `ThemeBrush("键名")` 取用，颜色只维护一份 |
+| `MainWindow.xaml.cs` | 页面切换、模拟数据刷新、串口区域的界面交互；不直接操作 `SerialPort` |
+| `SerialPortSession.cs` | 串口连接封装：打开/关闭/发送，后台线程只把收到的数据写进内部缓冲区，界面线程用 `TryTakePendingText` 批量取走；读失败通过 `TryTakeFault` 上报 |
+| `HexText.cs` | 十六进制文本解析与格式化（`01 03 00 00 00 0A` ↔ `byte[]`） |
+| `ModbusCrc16.cs` | CRC-16/MODBUS 计算与帧尾追加（低字节在前） |
+| `App.xaml.cs` | 应用级入口；把界面线程上未处理的异常转成提示框，避免直接退出 |
+
+约定：串口数据永远不直接跨线程写控件；界面状态（按钮文案、可用性、状态文字）统一由 `UpdateSerialConnectionUi` 切换。

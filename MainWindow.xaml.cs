@@ -1,6 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.IO.Ports;
 using System.Security;
@@ -14,6 +12,14 @@ using Microsoft.Win32;
 
 namespace CSharpProject;
 
+/// <summary>
+/// 设备监控中心主窗口。界面由左侧导航、顶部面包屑、页面容器和底部状态栏组成，
+/// 页面容器同样是六个互斥显示的 ScrollViewer（设备总览 / NewFile / 实时监控 / bake / 报警记录 / 系统信息）。
+/// <para>
+/// 测点数值目前由 <see cref="UpdateSimulationDisplay"/> 生成模拟值，尚未接入 PLC；
+/// 串口通信是唯一与真实外部设备交互的部分，收发逻辑封装在 <see cref="SerialPortSession"/> 中。
+/// </para>
+/// </summary>
 public partial class MainWindow : Window
 {
     // 接收区最多保留的字符数，超出时丢弃最旧的内容，防止长时间运行后文本框无限膨胀
@@ -25,41 +31,56 @@ public partial class MainWindow : Window
         Interval = TimeSpan.FromSeconds(1)
     };
 
-    // 接收区的刷新节拍。串口的 DataReceived 在线程池线程上高频触发，
-    // 先攒进缓冲区再批量刷 UI，避免小包逐字节刷新界面造成卡顿
+    // 接收区的刷新节拍。串口数据在线程池线程上高频到达，会话类先攒进缓冲区，
+    // 由界面线程按此节拍批量取走，避免小包逐字节刷新界面造成卡顿
     private readonly DispatcherTimer _receiveFlushTimer = new()
     {
         Interval = TimeSpan.FromMilliseconds(60)
     };
 
-    // 后台线程只写缓冲区，UI 线程只读缓冲区，全部访问都在 _receiveBufferLock 内完成
-    private readonly StringBuilder _receiveBuffer = new();
-    private readonly object _receiveBufferLock = new();
+    private readonly SerialPortSession _serialSession = new();
 
-    // 当前打开的串口；为 null 或 IsOpen == false 即表示未连接
-    private SerialPort? _serialPort;
-    private long _pendingReceivedBytes; // 两次刷新之间收到的字节数，刷完即清零
-    private long _totalReceivedBytes;   // 自上次“清空接收”以来的累计字节数
+    // 自上次“清空接收”以来收到的字节数，只在界面线程访问
+    private long _totalReceivedBytes;
+
+    // “计次示例”按钮的点击次数
+    private int _demoClickCount;
 
     public MainWindow()
     {
         InitializeComponent();
-        UpdateDisplay();
+        UpdateSimulationDisplay();
         ScanSerialPorts();
-        _simulationTimer.Tick += (_, _) => UpdateDisplay();
+
+        _simulationTimer.Tick += (_, _) => UpdateSimulationDisplay();
         _simulationTimer.Start();
-        _receiveFlushTimer.Tick += (_, _) => FlushReceiveBuffer();
+        _receiveFlushTimer.Tick += (_, _) => RefreshSerialReceiveArea();
         _receiveFlushTimer.Start();
 
-        // 窗口关闭时必须释放串口，否则进程退出前端口会一直处于占用状态
-        Closed += (_, _) =>
-        {
-            _simulationTimer.Stop();
-            _receiveFlushTimer.Stop();
-            CloseSerialPort();
-        };
+        Closed += (_, _) => ShutdownCommunication();
     }
-    private void UpdateDisplay()
+
+    // 导航按钮与页面按相同顺序排列，便于统一切换显示与选中样式
+    private Button[] NavigationButtons =>
+        [OverviewNavButton, NewFileNavButton, RealtimeNavButton, RecipeNavButton, AlarmNavButton, SystemNavButton];
+
+    private UIElement[] NavigationPages =>
+        [OverviewPage, NewFilePage, RealtimePage, RecipePage, AlarmPage, SystemPage];
+
+    /// <summary>停止定时器并释放串口，避免端口在进程退出前一直被占用。</summary>
+    private void ShutdownCommunication()
+    {
+        _simulationTimer.Stop();
+        _receiveFlushTimer.Stop();
+        CloseSerialPort();
+        _serialSession.Dispose();
+    }
+
+    /// <summary>
+    /// 生成一组围绕额定值小幅波动的模拟测点数据并刷新界面。
+    /// 这些数值不是从 PLC 或传感器读取的，接入真实设备后应替换为采集结果。
+    /// </summary>
+    private void UpdateSimulationDisplay()
     {
         var now = DateTime.Now;
         var temperature = 42.6 + (Random.Shared.NextDouble() - 0.5) * 0.6;
@@ -73,17 +94,66 @@ public partial class MainWindow : Window
         PressureText.Text = pressure.ToString("F2");
         SpeedText.Text = speed.ToString();
         EfficiencyText.Text = efficiency.ToString("F1");
-
     }
-//
+
+    /// <summary>重新枚举系统串口，供“扫描”按钮调用。</summary>
     private void ScanPortsClick(object sender, RoutedEventArgs e) => ScanSerialPorts();
 
-    private void ScanxxClick(object sender, RoutedEventArgs e) => somesyco();
+    /// <summary>把接收区内容复制到剪贴板，便于把现场日志贴给同事或存档。</summary>
+    private void CopyCommunicationLogClick(object sender, RoutedEventArgs e)
+    {
+        var content = ReceiveTextBox.Text;
+        if (content.Length == 0)
+        {
+            AppendCommunicationLog("接收区为空，没有可复制的内容。");
+            return;
+        }
 
-    private void ScanxxxsClick(object sender, RoutedEventArgs e) => someresyco();
+        try
+        {
+            Clipboard.SetText(content);
+            AppendCommunicationLog($"已复制 {content.Length} 个字符到剪贴板。");
+        }
+        catch (System.Runtime.InteropServices.ExternalException exception)
+        {
+            // 剪贴板被其他进程占用时会失败，提示即可
+            AppendCommunicationLog($"复制到剪贴板失败：{exception.Message}");
+        }
+    }
 
-    // 未被 XAML 引用；如需绑定 Click，请使用 RoutedEventArgs
-    private void recycol(object sender, RoutedEventArgs e) => sometouch(sender, e);
+    /// <summary>把接收区内容另存为 UTF-8 文本文件。</summary>
+    private void SaveCommunicationLogClick(object sender, RoutedEventArgs e)
+    {
+        var content = ReceiveTextBox.Text;
+        if (content.Length == 0)
+        {
+            AppendCommunicationLog("接收区为空，没有可保存的内容。");
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存通讯日志",
+            Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
+            FileName = $"serial-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt"
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(dialog.FileName, content, Encoding.UTF8);
+            AppendCommunicationLog($"日志已保存：{dialog.FileName}");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            AppendCommunicationLog($"保存日志失败：{exception.Message}");
+        }
+    }
+
+    // ===== 页面导航 =====
 
     private void OverviewNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(OverviewPage, OverviewNavButton, "设备总览");
@@ -103,6 +173,10 @@ public partial class MainWindow : Window
     private void SystemNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(SystemPage, SystemNavButton, "系统信息");
 
+    /// <summary>
+    /// 切换主内容区显示的页面，并同步面包屑与导航按钮的选中样式。
+    /// 页面已经可见时直接返回，避免重复播放入场动画。
+    /// </summary>
     private void ShowPage(UIElement page, Button activeButton, string title)
     {
         if (page.Visibility == Visibility.Visible)
@@ -110,45 +184,32 @@ public partial class MainWindow : Window
             return;
         }
 
-        OverviewPage.Visibility = Visibility.Collapsed;
-        NewFilePage.Visibility = Visibility.Collapsed;
-        RealtimePage.Visibility = Visibility.Collapsed;
-        RecipePage.Visibility = Visibility.Collapsed;
-        AlarmPage.Visibility = Visibility.Collapsed;
-        SystemPage.Visibility = Visibility.Collapsed;
+        foreach (var candidate in NavigationPages)
+        {
+            candidate.Visibility = Visibility.Collapsed;
+        }
+
         page.Visibility = Visibility.Visible;
         AnimatePageEntry(page);
 
-        foreach (var button in new[]
-                 {
-                     OverviewNavButton,
-                     NewFileNavButton,
-                     RealtimeNavButton,
-                     RecipeNavButton,
-                     AlarmNavButton,
-                     SystemNavButton
-                 })
+        foreach (var button in NavigationButtons)
         {
             var isActive = button == activeButton;
-            button.Background = isActive
-                ? System.Windows.Media.Brushes.DarkSlateGray
-                : System.Windows.Media.Brushes.Transparent;
-            button.Foreground = isActive
-                ? System.Windows.Media.Brushes.White
-                : new System.Windows.Media.SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(195, 203, 214));
+            button.Background = isActive ? ThemeBrush("NavigationActiveBackgroundBrush") : Brushes.Transparent;
+            button.Foreground = isActive ? Brushes.White : ThemeBrush("NavigationForegroundBrush");
         }
 
         PageBreadcrumbText.Text = title;
     }
 
+    /// <summary>页面首次显示时的入场动画：从全透明淡入，同时由下往上移动 8px。</summary>
     private static void AnimatePageEntry(UIElement page)
     {
-        page.Opacity = 0;//起始状态0为全透明
-        page.RenderTransform = new TranslateTransform(0, 8);//（ x, y）y轴偏移5px
+        page.Opacity = 0; // 起始完全透明
+        page.RenderTransform = new TranslateTransform(0, 8); // 起始位置向下偏移 8px
 
-        var duration = TimeSpan.FromMilliseconds(2000);//动画时长
-        var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut };//缓动曲线
+        var duration = TimeSpan.FromMilliseconds(2000); // 动画时长
+        var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut }; // 先快后慢，收尾更自然
         var fadeIn = new DoubleAnimation(0, 1, duration)
         {
             EasingFunction = easing,
@@ -166,67 +227,49 @@ public partial class MainWindow : Window
         page.BeginAnimation(UIElement.OpacityProperty, fadeIn);
         page.RenderTransform.BeginAnimation(TranslateTransform.YProperty, slideUp);
     }
-    int i;
 
-    private void sometouch(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// “计次示例”按钮：累加点击次数并直接显示在界面上。
+    /// 早期版本用 Debug.WriteLine 输出到调试窗口，普通运行时看不到，现已改为界面反馈。
+    /// </summary>
+    private void DemoClickCountClick(object sender, RoutedEventArgs e)
     {
-        i++;
-        Debug.WriteLine($"why touch me? touch time:{i}!");
+        _demoClickCount++;
+        DemoClickCountText.Text = $"已点击 {_demoClickCount} 次";
     }
 
-    private void someresyco()
-    {
-        int retime=0;
-        while(retime==0)
-        {   retime++;
-            Debug.WriteLine($"retime{retime}");
-        }
-    }
-    private void somesyco()
-    {
-        for (var i = 0; i < 10; i++)
-        {
-            Debug.WriteLine($"hello {i}");
-        }
-    }
-
-
+    /// <summary>
+    /// 枚举系统串口并填充端口下拉框。这里只获取端口名，不代表已经和设备建立通信。
+    /// </summary>
     private void ScanSerialPorts()
     {
         // 打开中的端口不能重新枚举：重设 ItemsSource 会把已选端口清空，导致无法正常关闭
-        if (_serialPort is { IsOpen: true })
+        if (_serialSession.IsOpen)
         {
             PortScanStatusText.Text = "串口已打开，请先关闭串口再重新扫描。";
-            PortScanStatusText.Foreground = System.Windows.Media.Brushes.DarkOrange;
+            PortScanStatusText.Foreground = ThemeBrush("StateWarningBrush");
             return;
         }
 
         try
         {
-            using var serialPortsKey =
-                Registry.LocalMachine.OpenSubKey(@"HARDWARE\DEVICEMAP\SERIALCOMM");
-
-            var ports = serialPortsKey?
-                .GetValueNames()
-                .Select(name => serialPortsKey.GetValue(name) as string)
-                .Where(port => !string.IsNullOrWhiteSpace(port))
-                .Select(port => port!)
+            var ports = SerialPort.GetPortNames()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(GetComPortNumber)
                 .ThenBy(port => port, StringComparer.OrdinalIgnoreCase)
-                .ToArray() ?? [];
+                .ToArray();
 
             PortComboBox.ItemsSource = ports;
             if (ports.Length > 0)
             {
                 PortComboBox.SelectedIndex = 0;
                 PortScanStatusText.Text = $"检测到 {ports.Length} 个串口。这里只枚举系统端口，尚未连接设备。";
-                PortScanStatusText.Foreground = System.Windows.Media.Brushes.SeaGreen;
+                PortScanStatusText.Foreground = ThemeBrush("StateSuccessBrush");
             }
             else
             {
                 PortScanStatusText.Text = "未检测到串口。请检查设备、驱动或 USB 转串口连接后重新扫描。";
-                PortScanStatusText.Foreground = System.Windows.Media.Brushes.DarkOrange;
+                PortScanStatusText.Foreground = ThemeBrush("StateWarningBrush");
             }
         }
         catch (Exception exception) when (
@@ -234,7 +277,7 @@ public partial class MainWindow : Window
         {
             PortComboBox.ItemsSource = Array.Empty<string>();
             PortScanStatusText.Text = $"扫描串口失败：{exception.Message}";
-            PortScanStatusText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            PortScanStatusText.Foreground = ThemeBrush("StateDangerBrush");
         }
     }
 
@@ -249,10 +292,10 @@ public partial class MainWindow : Window
 
     // ===== 串口通信：打开 / 关闭 / 发送 / 接收 =====
 
-    // 同一个按钮承担开与关，先看串口实际状态再决定动作
+    // 同一个按钮承担开与关，先看会话实际状态再决定动作
     private void TogglePortClick(object sender, RoutedEventArgs e)
     {
-        if (_serialPort is { IsOpen: true })
+        if (_serialSession.IsOpen)
         {
             CloseSerialPort();
         }
@@ -263,96 +306,66 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 打开所选串口。参数固定 8 数据位 / 无校验 / 1 停止位 / 无流控，
-    /// 这是 PLC、单片机调试口最常见的配置；其他组合需要设备手册另行确认。
-    /// 端口被占用、拔线等失败只在接收区提示，不向上抛异常。
+    /// 打开所选串口。端口被占用、设备已拔出等失败只在接收区提示，不向调用方抛出。
     /// </summary>
     private void OpenSerialPort()
     {
         // 端口列表由上方“串口（COM）扫描”填充，这里直接复用选中项
         if (PortComboBox.SelectedItem is not string portName || string.IsNullOrWhiteSpace(portName))
         {
-            AppendSerialLog("未选择串口，请先点击“扫描”并选择端口。");
+            AppendCommunicationLog("未选择串口，请先点击“扫描”并选择端口。");
             return;
         }
 
         var baudRate = GetSelectedBaudRate();
-        SerialPort? serialPort = null;
         try
         {
-            serialPort = new SerialPort(portName, baudRate, Parity.None, 8, StopBits.One)
-            {
-                Handshake = Handshake.None,
-                Encoding = Encoding.UTF8, // 按文本收发；二进制协议需要改成十六进制显示
-                ReadTimeout = 500,
-                WriteTimeout = 1000
-            };
-            serialPort.DataReceived += SerialPortDataReceived;
-            serialPort.Open();
-            _serialPort = serialPort;
-            UpdateSerialPortState(true, portName, baudRate);
-            AppendSerialLog($"已打开 {portName}，波特率 {baudRate}（8-N-1）。");
+            _serialSession.Open(portName, baudRate);
+            UpdateSerialConnectionUi(true);
+            AppendCommunicationLog($"已打开 {portName}，波特率 {baudRate}（8-N-1）。");
         }
         catch (Exception exception) when (exception is UnauthorizedAccessException or IOException
                                               or InvalidOperationException or ArgumentException)
         {
-            // 打开失败时把刚创建的实例彻底丢掉，避免残留事件订阅和句柄
-            if (serialPort is not null)
-            {
-                serialPort.DataReceived -= SerialPortDataReceived;
-                serialPort.Dispose();
-            }
-
-            _serialPort = null;
-            UpdateSerialPortState(false);
-            AppendSerialLog($"打开串口失败：{exception.Message}");
+            UpdateSerialConnectionUi(false);
+            AppendCommunicationLog($"打开串口失败：{exception.Message}");
         }
     }
 
     /// <summary>关闭并释放串口，同时把界面恢复到“未连接”状态。</summary>
     private void CloseSerialPort()
     {
-        var serialPort = _serialPort;
-        _serialPort = null;
-        UpdateSerialPortState(false);
-        if (serialPort is null)
-        {
-            return;
-        }
-
+        var wasOpen = _serialSession.IsOpen;
         try
         {
-            // 先退订事件再关闭，防止关闭过程中还有回调进来访问已释放的对象
-            serialPort.DataReceived -= SerialPortDataReceived;
-            if (serialPort.IsOpen)
-            {
-                serialPort.Close();
-            }
+            _serialSession.Close();
         }
         catch (Exception exception) when (exception is IOException or InvalidOperationException)
         {
-            AppendSerialLog($"关闭串口时出现异常：{exception.Message}");
-        }
-        finally
-        {
-            serialPort.Dispose();
+            AppendCommunicationLog($"关闭串口时出现异常：{exception.Message}");
         }
 
-        AppendSerialLog("串口已关闭。");
+        UpdateSerialConnectionUi(false);
+        if (wasOpen)
+        {
+            AppendCommunicationLog("串口已关闭。");
+        }
     }
 
-    // 发送：文本模式按 UTF-8 写字符串；十六进制模式先解析成字节再写，
-    // 可追加 Modbus RTU 的 CRC16（低字节在前），直接下发 01 03 00 00 00 0A 这类报文
+    /// <summary>
+    /// 发送输入框内容。文本模式按 UTF-8 写出；十六进制模式解析成字节，
+    /// 需要时在帧尾追加 Modbus RTU 的 CRC16（低字节在前）。
+    /// </summary>
     private void SendClick(object sender, RoutedEventArgs e)
     {
-        if (_serialPort is not { IsOpen: true } serialPort)
+        if (!_serialSession.IsOpen)
         {
-            AppendSerialLog("串口未打开，无法发送。");
+            AppendCommunicationLog("串口未打开，无法发送。");
             return;
         }
 
         var payload = SendTextBox.Text;
-        if (string.IsNullOrEmpty(payload))
+        if (payload.Length == 0)
         {
             return;
         }
@@ -361,21 +374,21 @@ public partial class MainWindow : Window
         {
             if (HexSendCheckBox.IsChecked == true)
             {
-                if (!TryParseHexPayload(payload, out var frame))
+                if (!HexText.TryParse(payload, out var frame))
                 {
-                    AppendSerialLog("十六进制内容无效：只能包含 0-9、A-F 和空格/逗号等分隔符，且字节须成对。");
+                    AppendCommunicationLog("十六进制内容无效：只能包含 0-9、A-F 和空格/逗号等分隔符，且字节须成对。");
                     return;
                 }
 
                 if (AppendModbusCrcCheckBox.IsChecked == true)
                 {
                     var crc = ModbusCrc16.Compute(frame);
-                    AppendSerialLog($"Modbus CRC16 = 0x{crc:X4}（帧尾字节 {ModbusCrc16.ToByteText(crc)}）");
-                    frame = ModbusCrc16.Append(frame);
+                    AppendCommunicationLog($"Modbus CRC16 = 0x{crc:X4}（帧尾字节 {ModbusCrc16.FormatCrcBytes(crc)}）");
+                    frame = ModbusCrc16.AppendCrc(frame);
                 }
 
-                serialPort.Write(frame, 0, frame.Length);
-                AppendSerialLog($"发送 {frame.Length} 字节：{FormatHexBytes(frame)}");
+                _serialSession.WriteBytes(frame);
+                AppendCommunicationLog($"发送 {frame.Length} 字节：{HexText.Format(frame)}");
                 return;
             }
 
@@ -384,134 +397,53 @@ public partial class MainWindow : Window
                 payload += "\r\n";
             }
 
-            serialPort.Write(payload);
-            AppendSerialLog($"发送 {payload.Length} 字符：{EscapeForLog(payload)}");
+            _serialSession.WriteText(payload);
+            AppendCommunicationLog($"发送 {payload.Length} 字符：{EscapeControlChars(payload)}");
         }
         catch (Exception exception) when (exception is IOException or InvalidOperationException or TimeoutException)
         {
-            AppendSerialLog($"发送失败：{exception.Message}");
+            AppendCommunicationLog($"发送失败：{exception.Message}");
         }
     }
 
     // 十六进制模式整帧下发，追加 \r\n 会把报文尾的 CRC 冲掉，因此两种模式互斥
-    private void HexSendChanged(object sender, RoutedEventArgs e)
+    private void HexSendModeChanged(object sender, RoutedEventArgs e)
     {
         var hexMode = HexSendCheckBox.IsChecked == true;
         AppendCrLfCheckBox.IsEnabled = !hexMode;
         AppendModbusCrcCheckBox.IsEnabled = hexMode;
     }
 
-    // 解析 "01 03 00 00 00 0A"、"0x01,0x03" 这类写法；分隔符与 0x 前缀都会被忽略
-    private static bool TryParseHexPayload(string text, out byte[] bytes)
-    {
-        bytes = [];
-        var normalized = text.Replace("0x", string.Empty, StringComparison.OrdinalIgnoreCase);
-        var digits = new StringBuilder(normalized.Length);
-        foreach (var character in normalized)
-        {
-            if (char.IsWhiteSpace(character) || character is ',' or '-' or ';' or ':')
-            {
-                continue;
-            }
-
-            if (!Uri.IsHexDigit(character))
-            {
-                return false;
-            }
-
-            digits.Append(character);
-        }
-
-        if (digits.Length == 0 || digits.Length % 2 != 0)
-        {
-            return false;
-        }
-
-        var result = new byte[digits.Length / 2];
-        for (var index = 0; index < result.Length; index++)
-        {
-            result[index] = Convert.ToByte(digits.ToString(index * 2, 2), 16);
-        }
-
-        bytes = result;
-        return true;
-    }
-
-    // 十六进制日志用空格分隔，便于和报文手册逐字节对照
-    private static string FormatHexBytes(ReadOnlySpan<byte> bytes) =>
-        string.Join(' ', bytes.ToArray().Select(value => value.ToString("X2")));
-
-    // 清空接收区时缓冲区也要一起清，否则下一次刷新会把还没来得及显示的旧数据补回来
+    // 清空接收区时会话里待刷新的数据也要一起丢弃，否则下一次刷新会把旧数据补回来
     private void ClearReceiveClick(object sender, RoutedEventArgs e)
     {
-        lock (_receiveBufferLock)
-        {
-            _receiveBuffer.Clear();
-            _pendingReceivedBytes = 0;
-        }
-
+        _serialSession.DiscardPendingData();
         _totalReceivedBytes = 0;
         ReceiveTextBox.Clear();
         ReceiveCountText.Text = "已接收 0 字节";
     }
 
-    // 在后台线程触发，这里只做“读 -> 放进缓冲区”，不碰任何 UI 控件；
-    // 真正刷新界面交给 UI 线程上的 _receiveFlushTimer
-    private void SerialPortDataReceived(object? sender, SerialDataReceivedEventArgs e)
+    /// <summary>
+    /// UI 线程定时调用：取走后台线程攒下的接收数据，检查通讯故障，再一次性刷进接收区。
+    /// </summary>
+    private void RefreshSerialReceiveArea()
     {
-        if (sender is not SerialPort port)
+        if (_serialSession.TryTakePendingText(out var text, out var byteCount))
         {
-            return;
+            AppendReceiveContent(text, byteCount);
         }
 
-        string text;
-        try
+        if (_serialSession.TryTakeFault(out var faultMessage))
         {
-            text = port.ReadExisting();
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException
-                                              or UnauthorizedAccessException or TimeoutException)
-        {
-            // 设备被拔出时读操作会抛异常，忽略即可，UI 侧仍可通过“关闭串口”恢复
-            return;
-        }
-
-        if (text.Length == 0)
-        {
-            return;
-        }
-
-        // Encoding.GetByteCount 反映线上实际字节数，比字符数更接近设备真实发送量
-        lock (_receiveBufferLock)
-        {
-            _receiveBuffer.Append(text);
-            _pendingReceivedBytes += port.Encoding.GetByteCount(text);
+            AppendCommunicationLog($"读取中断：{faultMessage}");
         }
     }
 
-    // UI 线程定时调用：把攒了 60ms 的数据一次刷进接收区
-    private void FlushReceiveBuffer()
-    {
-        string pending;
-        long pendingBytes;
-        lock (_receiveBufferLock)
-        {
-            if (_receiveBuffer.Length == 0)
-            {
-                return;
-            }
-
-            pending = _receiveBuffer.ToString();
-            pendingBytes = _pendingReceivedBytes;
-            _receiveBuffer.Clear();
-            _pendingReceivedBytes = 0;
-        }
-
-        AppendReceiveText(pending, pendingBytes);
-    }
-
-    // 仅 UI 线程调用。receivedBytes > 0 表示这是设备数据，需要累计到接收计数
-    private void AppendReceiveText(string text, long receivedBytes)
+    /// <summary>
+    /// 把一段内容追加到接收区，只能在 UI 线程调用。
+    /// receivedBytes 为 0 表示这是程序生成的状态日志，不计入接收字节数。
+    /// </summary>
+    private void AppendReceiveContent(string text, long receivedBytes)
     {
         if (receivedBytes > 0)
         {
@@ -524,7 +456,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 整段重新赋值而不是追加，便于在超长时从头部截断
+        // 整段重新赋值而不是逐次追加，便于超长时直接从头部截断
         var combined = ReceiveTextBox.Text + text;
         if (combined.Length > MaxReceiveLength)
         {
@@ -535,34 +467,38 @@ public partial class MainWindow : Window
         ReceiveTextBox.ScrollToEnd();
     }
 
-    // 状态信息带时间戳写进接收区，方便对照收发时序；不计入接收字节数
-    private void AppendSerialLog(string message) =>
-        AppendReceiveText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}", 0);
+    /// <summary>带时间戳的状态日志，写入接收区便于和收发数据对照时序。</summary>
+    private void AppendCommunicationLog(string message) =>
+        AppendReceiveContent($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}", 0);
 
-    // 日志里把 CR/LF 显示成可见字符，否则一行日志会被拆成多行
-    private static string EscapeForLog(string text) =>
+    /// <summary>把 CR/LF 转成可见的转义形式，避免一行日志被拆成多行。</summary>
+    private static string EscapeControlChars(string text) =>
         text.Replace("\r", "\\r").Replace("\n", "\\n");
 
-    // 串口状态集中在这里切换：按钮文案与颜色、发送是否可用、端口配置是否可改、右上角状态文字
-    private void UpdateSerialPortState(bool isOpen, string? portName = null, int baudRate = 0)
+    /// <summary>
+    /// 串口状态集中在这里切换：按钮文案与配色、发送是否可用、端口配置是否可改、右上角状态文字。
+    /// </summary>
+    private void UpdateSerialConnectionUi(bool isOpen)
     {
         TogglePortButton.Content = isOpen ? "关闭串口" : "打开串口";
-        TogglePortButton.Background = isOpen
-            ? System.Windows.Media.Brushes.Firebrick
-            : new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x16, 0x86, 0x6F));
+        TogglePortButton.Background = ThemeBrush(isOpen ? "StateDangerBrush" : "BrandBrush");
         SendButton.IsEnabled = isOpen;
         PortComboBox.IsEnabled = !isOpen;
         SerialPortComboBox.IsEnabled = !isOpen;
         BaudRateComboBox.IsEnabled = !isOpen;
-        SerialStatusText.Text = isOpen ? $"{portName} 已连接 · {baudRate}" : "未连接";
-        SerialStatusText.Foreground = isOpen
-            ? System.Windows.Media.Brushes.SeaGreen
-            : new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x9A, 0xA5, 0xB3));
+        SerialStatusText.Text = isOpen
+            ? $"{_serialSession.PortName} 已连接 · {_serialSession.BaudRate}"
+            : "未连接";
+        SerialStatusText.Foreground = ThemeBrush(isOpen ? "StateSuccessBrush" : "TextSubtleBrush");
     }
 
-    // 用于端口排序：把 COM 后面的数字解析出来，让 COM2 排在 COM10 前面（字符串比较会反过来）
+    /// <summary>按资源键取画刷；主题色只在 XAML 色板里定义一份，代码不再硬编码 RGB。</summary>
+    private Brush ThemeBrush(string resourceKey) => (Brush)FindResource(resourceKey);
+
+    /// <summary>
+    /// 端口排序用：解析 COM 后面的数字，让 COM2 排在 COM10 前面（字符串比较会得到相反的顺序）。
+    /// 不符合 COM+数字格式的名字排到最后。
+    /// </summary>
     private static int GetComPortNumber(string port)
     {
         return port.StartsWith("COM", StringComparison.OrdinalIgnoreCase)

@@ -35,7 +35,7 @@ public static class ModbusCrc16
     /// <summary>
     /// 返回“原始帧 + CRC”的新数组。Modbus RTU 规定 CRC 低字节先发，所以这里低字节在前、高字节在后。
     /// </summary>
-    public static byte[] Append(ReadOnlySpan<byte> frame)
+    public static byte[] AppendCrc(ReadOnlySpan<byte> frame)
     {
         var withCrc = new byte[frame.Length + 2];
         frame.CopyTo(withCrc);
@@ -46,6 +46,6 @@ public static class ModbusCrc16
         return withCrc;
     }
 
-    /// <summary>把 CRC 拆成帧尾的两个字节（低字节在前），便于直接拼到报文里。</summary>
-    public static string ToByteText(ushort crc) => $"{crc & 0xFF:X2} {crc >> 8:X2}";
+    /// <summary>把 CRC 拆成帧尾的两个字节（低字节在前），用于日志显示。</summary>
+    public static string FormatCrcBytes(ushort crc) => $"{crc & 0xFF:X2} {crc >> 8:X2}";
 }
