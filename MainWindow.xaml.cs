@@ -1,15 +1,15 @@
-using System.ComponentModel;
-using System.IO;
-using System.IO.Ports;
-using System.Net.Sockets;
-using System.Security;
-using System.Text;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Threading;
-using Microsoft.Win32;
+using System.ComponentModel; // 提供 Win32Exception，用于处理串口枚举相关的系统错误。
+using System.IO; // 提供文件读写及 IOException，用于保存日志和处理通信错误。
+using System.IO.Ports; // 提供 SerialPort，用于枚举本机串口。
+using System.Net.Sockets; // 提供 SocketException，用于处理 Modbus TCP 连接错误。
+using System.Security; // 提供 SecurityException，用于处理文件访问权限错误。
+using System.Text; // 提供 StringBuilder，用于构造寄存器读取结果。
+using System.Windows; // 提供 WPF 窗口、控件基类、路由事件及剪贴板等基础类型。
+using System.Windows.Controls; // 提供 Button、TextBox、ComboBox 等 WPF 控件类型。
+using System.Windows.Media; // 提供 Brush、Brushes、Transform 等界面绘制类型。
+using System.Windows.Media.Animation; // 提供页面切换时使用的动画和缓动类型。
+using System.Windows.Threading; // 提供 DispatcherTimer，用于刷新模拟数据和串口接收区。
+using Microsoft.Win32; // 提供 SaveFileDialog，用于选择日志保存位置。
 
 namespace CSharpProject;
 

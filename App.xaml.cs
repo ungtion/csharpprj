@@ -1,5 +1,5 @@
-using System.Windows;
-using System.Windows.Threading;
+using System.Windows; // 提供 WPF 应用程序、启动事件及消息框等界面基础类型。
+using System.Windows.Threading; // 提供 WPF Dispatcher 未处理异常事件及其参数类型。
 
 namespace CSharpProject;
 

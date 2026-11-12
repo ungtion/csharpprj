@@ -1,6 +1,6 @@
-using System.IO;
-using System.IO.Ports;
-using System.Text;
+using System.IO; // 提供 IOException，用于报告串口读写错误。
+using System.IO.Ports; // 提供 SerialPort 及串口读取、写入所需的类型。
+using System.Text; // 提供 Encoding，用于串口文本数据的编码和解码。
 
 namespace CSharpProject;
 

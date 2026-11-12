@@ -1,4 +1,4 @@
-using System.Text;
+using System.Text; // 提供 StringBuilder，用于拼接和格式化十六进制文本。
 
 namespace CSharpProject;
 

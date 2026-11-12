@@ -1,5 +1,5 @@
-using System.IO;
-using System.Net.Sockets;
+using System.IO; // 提供 IOException、InvalidDataException 等输入输出异常类型。
+using System.Net.Sockets; // 提供 TCP 客户端及 SocketException，用于 Modbus TCP 通信。
 
 namespace CSharpProject;
 
