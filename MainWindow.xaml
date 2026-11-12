@@ -118,11 +118,11 @@
                         </StackPanel>
                     </Button>
 
-                    <Button x:Name="NewFileNavButton" Style="{StaticResource NavigationButtonStyle}"
-                            Click="NewFileNavClick">
+                    <Button x:Name="Mc405ModbusNavButton" Style="{StaticResource NavigationButtonStyle}"
+                            Click="Mc405ModbusNavClick">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="▣" Foreground="#58D0B5" FontSize="15" Width="26" />
-                            <TextBlock Text="NewFile"
+                            <TextBlock Text="MC405 通讯测试"
                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                        FontSize="12" VerticalAlignment="Center" />
                         </StackPanel>
@@ -699,58 +699,133 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- 以下是非设备控制页面；测点卡通过 ElementName 绑定复用首页的模拟值。 -->
-            <ScrollViewer x:Name="NewFilePage" Grid.Row="1" Visibility="Collapsed"
+            <!-- MC405 Modbus TCP 只读测试页面；不提供寄存器写入或运动控制。 -->
+            <ScrollViewer x:Name="Mc405ModbusPage" Grid.Row="1" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel Style="{StaticResource PageContentStyle}">
-                    <TextBlock Text="New File" Foreground="#253248" FontSize="22" FontWeight="SemiBold" />
-                    <TextBlock Text="测点当前值与运行状态示例"
+                    <TextBlock Text="MC405 Modbus TCP" Foreground="#253248"
+                               FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="连接控制器并读取 Modbus 寄存器，验证网络和通讯参数"
                                Foreground="#8290A3" FontSize="11" Margin="0,5,0,18" />
-                    <UniformGrid Columns="2">
-                        <Border Style="{StaticResource CardStyle}" Margin="0,0,8,8">
-                            <StackPanel>
-                                <TextBlock Text="出料温度" Foreground="#718096" FontSize="12" />
-                                <TextBlock Text="{Binding Text, ElementName=TemperatureText, StringFormat={}{0} °C}"
-                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
-                                <TextBlock Text="模拟测点 · 更新周期 1 秒"
-                                           Foreground="#8290A3" FontSize="10" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardStyle}" Margin="8,0,0,8">
-                            <StackPanel>
-                                <TextBlock Text="管路压力" Foreground="#718096" FontSize="12" />
-                                <TextBlock Text="{Binding Text, ElementName=PressureText, StringFormat={}{0} MPa}"
-                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
-                                <TextBlock Text="正常范围 0.40–0.80 MPa"
-                                           Foreground="#8290A3" FontSize="10" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardStyle}" Margin="0,8,8,0">
-                            <StackPanel>
-                                <TextBlock Text="主轴转速" Foreground="#718096" FontSize="12" />
-                                <TextBlock Text="{Binding Text, ElementName=SpeedText, StringFormat={}{0} rpm}"
-                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
-                                <TextBlock Text="额定转速 1500 rpm"
-                                           Foreground="#8290A3" FontSize="10" />
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource CardStyle}" Margin="8,8,0,0">
-                            <StackPanel>
-                                <TextBlock Text="设备稼动率" Foreground="#718096" FontSize="12" />
-                                <TextBlock Text="{Binding Text, ElementName=EfficiencyText, StringFormat={}{0} %}"
-                                           Foreground="#26364A" FontSize="28" FontWeight="SemiBold" Margin="0,8,0,4" />
-                                <TextBlock Text="本班次模拟统计"
-                                           Foreground="#8290A3" FontSize="10" />
-                            </StackPanel>
-                        </Border>
-                    </UniformGrid>
-                    <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
                         <StackPanel>
-                            <TextBlock Text="测点说明" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Text="当前页面展示的是程序生成的模拟值，不是从 PLC 或传感器读取的数据。接入真实设备后，可在此扩展测点名称、量程、报警上下限及采样状态。"
-                                       Foreground="#718096" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            <TextBlock Text="连接参数" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="控制器 IP / 主机名" Style="{StaticResource MutedTextStyle}" />
+                                    <TextBox x:Name="Mc405HostTextBox" Text="192.168.0.250"
+                                             Height="34" Padding="8,5" Margin="0,5,0,0"
+                                             VerticalContentAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="TCP 端口" Style="{StaticResource MutedTextStyle}" />
+                                    <TextBox x:Name="Mc405PortTextBox" Text="502"
+                                             Height="34" Padding="8,5" Margin="0,5,0,0"
+                                             VerticalContentAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="4">
+                                    <TextBlock Text="Unit ID（0–255）" Style="{StaticResource MutedTextStyle}" />
+                                    <TextBox x:Name="Mc405UnitIdTextBox" Text="1"
+                                             Height="34" Padding="8,5" Margin="0,5,0,0"
+                                             VerticalContentAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                    <Button x:Name="Mc405ConnectButton" Content="连接"
+                                            Click="ConnectMc405Click" MinWidth="82" Height="34"
+                                            Margin="0,0,8,0" Padding="14,0"
+                                            Background="#16866F" Foreground="White"
+                                            BorderThickness="0" />
+                                    <Button x:Name="Mc405DisconnectButton" Content="断开"
+                                            Click="DisconnectMc405Click" MinWidth="82" Height="34"
+                                            Padding="14,0" IsEnabled="False" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock x:Name="Mc405ConnectionStatusText" Text="未连接"
+                                       Foreground="#9AA5B3" FontSize="11" Margin="0,12,0,0" />
                         </StackPanel>
                     </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="只读寄存器测试" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="寄存器类型 / 功能码" Style="{StaticResource MutedTextStyle}" />
+                                    <ComboBox x:Name="Mc405FunctionComboBox" SelectedIndex="0"
+                                              Height="34" Margin="0,5,0,0" VerticalContentAlignment="Center">
+                                        <ComboBoxItem Content="保持寄存器 (03)" Tag="3" />
+                                        <ComboBoxItem Content="输入寄存器 (04)" Tag="4" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="起始地址（0–65535）" Style="{StaticResource MutedTextStyle}" />
+                                    <TextBox x:Name="Mc405StartAddressTextBox" Text="0"
+                                             Height="34" Padding="8,5" Margin="0,5,0,0"
+                                             VerticalContentAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="4">
+                                    <TextBlock Text="数量（1–125）" Style="{StaticResource MutedTextStyle}" />
+                                    <TextBox x:Name="Mc405QuantityTextBox" Text="10"
+                                             Height="34" Padding="8,5" Margin="0,5,0,0"
+                                             VerticalContentAlignment="Center" />
+                                </StackPanel>
+                                <Button x:Name="Mc405ReadButton" Grid.Column="6" Content="读取寄存器"
+                                        Click="ReadMc405RegistersClick" MinWidth="110" Height="34"
+                                        Padding="14,0" VerticalAlignment="Bottom"
+                                        Background="#16866F" Foreground="White"
+                                        BorderThickness="0" IsEnabled="False" />
+                            </Grid>
+                            <TextBlock Text="地址按 Modbus PDU 的 0 起始地址填写；例如手册中的 40001 通常对应地址 0。请以 MC405 程序/手册中的映射为准。"
+                                       Foreground="#8290A3" FontSize="10" TextWrapping="Wrap"
+                                       Margin="0,10,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="读取结果（十进制 / 十六进制）"
+                                       Style="{StaticResource SectionTitleStyle}" />
+                            <TextBox x:Name="Mc405ResultTextBox" IsReadOnly="True"
+                                     AcceptsReturn="True" TextWrapping="NoWrap"
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     FontFamily="Consolas" FontSize="12" MinHeight="180" MaxHeight="320"
+                                     Padding="10" Margin="0,12,0,0"
+                                     Background="#F8FAFC" BorderBrush="#E5EAF0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="通讯日志" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBox x:Name="Mc405LogTextBox" IsReadOnly="True"
+                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     FontFamily="Consolas" FontSize="11" MinHeight="90" MaxHeight="220"
+                                     Padding="10" Margin="0,12,0,0"
+                                     Background="#F8FAFC" BorderBrush="#E5EAF0" />
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Text="本页仅发送功能码 03/04 读取请求，不写寄存器、不触发运动。"
+                               Foreground="#9AA5B3" FontSize="10" Margin="2,12,0,0" />
                 </StackPanel>
             </ScrollViewer>
 

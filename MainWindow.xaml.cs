@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.IO.Ports;
+using System.Net.Sockets;
 using System.Security;
 using System.Text;
 using System.Windows;
@@ -14,7 +15,7 @@ namespace CSharpProject;
 
 /// <summary>
 /// 设备监控中心主窗口。界面由左侧导航、顶部面包屑、页面容器和运行环境提示组成，
-/// 页面容器同样是六个互斥显示的 ScrollViewer（设备总览 / NewFile / 实时监控 / bake / 报警记录 / 系统信息）。
+/// 页面容器同样是六个互斥显示的 ScrollViewer（设备总览 / MC405 通讯测试 / 实时监控 / bake / 报警记录 / 系统信息）。
 /// <para>
 /// 测点数值目前由 <see cref="UpdateSimulationDisplay"/> 生成模拟值，尚未接入 PLC；
 /// 串口通信是唯一与真实外部设备交互的部分，收发逻辑封装在 <see cref="SerialPortSession"/> 中。
@@ -39,6 +40,7 @@ public partial class MainWindow : Window
     };
 
     private readonly SerialPortSession _serialSession = new();
+    private readonly ModbusTcpSession _modbusTcpSession = new();
 
     // 自上次“清空接收”以来收到的字节数，只在界面线程访问
     private long _totalReceivedBytes;
@@ -62,10 +64,10 @@ public partial class MainWindow : Window
 
     // 导航按钮和页面按同一顺序排列；新增页面时需同步更新这两个集合
     private Button[] NavigationButtons =>
-        [OverviewNavButton, NewFileNavButton, RealtimeNavButton, RecipeNavButton, AlarmNavButton, SystemNavButton];
+        [OverviewNavButton, Mc405ModbusNavButton, RealtimeNavButton, RecipeNavButton, AlarmNavButton, SystemNavButton];
 
     private UIElement[] NavigationPages =>
-        [OverviewPage, NewFilePage, RealtimePage, RecipePage, AlarmPage, SystemPage];
+        [OverviewPage, Mc405ModbusPage, RealtimePage, RecipePage, AlarmPage, SystemPage];
 
     /// <summary>
     /// 窗口关闭时统一停止定时器并释放会话资源，避免端口在进程退出前一直被占用。
@@ -77,6 +79,7 @@ public partial class MainWindow : Window
         _receiveFlushTimer.Stop();
         CloseSerialPort();
         _serialSession.Dispose();
+        _modbusTcpSession.Dispose();
     }
 
     /// <summary>
@@ -165,8 +168,154 @@ public partial class MainWindow : Window
     private void OverviewNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(OverviewPage, OverviewNavButton, "设备总览");
 
-    private void NewFileNavClick(object sender, RoutedEventArgs e) =>
-        ShowPage(NewFilePage, NewFileNavButton, "New File");
+    private void Mc405ModbusNavClick(object sender, RoutedEventArgs e) =>
+        ShowPage(Mc405ModbusPage, Mc405ModbusNavButton, "MC405 通讯测试");
+
+    private async void ConnectMc405Click(object sender, RoutedEventArgs e)
+    {
+        var host = Mc405HostTextBox.Text.Trim();
+        if (host.Length == 0)
+        {
+            AppendMc405Log("请输入 MC405 的 IP 地址或主机名。");
+            return;
+        }
+
+        if (!int.TryParse(Mc405PortTextBox.Text, out var port) || port is < 1 or > 65535)
+        {
+            AppendMc405Log("TCP 端口须为 1–65535 之间的整数。");
+            return;
+        }
+
+        SetMc405ConnectionUi(false);
+        Mc405ConnectButton.IsEnabled = false;
+        Mc405ConnectionStatusText.Text = $"正在连接 {host}:{port}…";
+        Mc405ConnectionStatusText.Foreground = ThemeBrush("TextMutedBrush");
+
+        try
+        {
+            await _modbusTcpSession.ConnectAsync(host, port);
+            SetMc405ConnectionUi(true);
+            Mc405ConnectionStatusText.Text = $"已连接 {host}:{port}";
+            Mc405ConnectionStatusText.Foreground = ThemeBrush("StateSuccessBrush");
+            AppendMc405Log($"已连接到 {host}:{port}。");
+        }
+        catch (Exception exception) when (exception is SocketException or IOException
+                                              or OperationCanceledException or ArgumentException
+                                              or InvalidOperationException)
+        {
+            _modbusTcpSession.Close();
+            SetMc405ConnectionUi(false);
+            Mc405ConnectionStatusText.Text = "连接失败";
+            Mc405ConnectionStatusText.Foreground = ThemeBrush("StateDangerBrush");
+            AppendMc405Log($"连接 {host}:{port} 失败：{exception.Message}");
+        }
+    }
+
+    private void DisconnectMc405Click(object sender, RoutedEventArgs e)
+    {
+        _modbusTcpSession.Close();
+        SetMc405ConnectionUi(false);
+        Mc405ConnectionStatusText.Text = "未连接";
+        Mc405ConnectionStatusText.Foreground = ThemeBrush("TextSubtleBrush");
+        AppendMc405Log("已断开 MC405 连接。");
+    }
+
+    private async void ReadMc405RegistersClick(object sender, RoutedEventArgs e)
+    {
+        if (!_modbusTcpSession.IsConnected)
+        {
+            AppendMc405Log("尚未连接控制器，请先建立 Modbus TCP 连接。");
+            return;
+        }
+
+        if (!byte.TryParse(Mc405UnitIdTextBox.Text, out var unitId))
+        {
+            AppendMc405Log("Unit ID 须为 0–255 之间的整数。");
+            return;
+        }
+
+        if (!ushort.TryParse(Mc405StartAddressTextBox.Text, out var startAddress))
+        {
+            AppendMc405Log("起始地址须为 0–65535 之间的整数。");
+            return;
+        }
+
+        if (!ushort.TryParse(Mc405QuantityTextBox.Text, out var quantity) || quantity is < 1 or > 125
+            || (uint)startAddress + quantity > 65536)
+        {
+            AppendMc405Log("读取数量须为 1–125，且地址范围不能超过 65535。");
+            return;
+        }
+
+        if (Mc405FunctionComboBox.SelectedItem is not ComboBoxItem { Tag: string functionTag }
+            || !byte.TryParse(functionTag, out var functionCode)
+            || functionCode is not (3 or 4))
+        {
+            AppendMc405Log("请选择保持寄存器（03）或输入寄存器（04）。");
+            return;
+        }
+
+        Mc405ReadButton.IsEnabled = false;
+        Mc405DisconnectButton.IsEnabled = false;
+        try
+        {
+            var result = await _modbusTcpSession.ReadRegistersAsync(
+                unitId, functionCode, startAddress, quantity);
+
+            var output = new StringBuilder();
+            output.AppendLine($"功能码 {functionCode:D2} · 起始地址 {startAddress} · 数量 {quantity}");
+            for (var index = 0; index < result.Registers.Length; index++)
+            {
+                var address = startAddress + index;
+                var value = result.Registers[index];
+                output.AppendLine($"地址 {address,5}  |  十进制 {value,5}  |  十六进制 0x{value:X4}");
+            }
+
+            Mc405ResultTextBox.Text = output.ToString();
+            AppendMc405Log($"TX: {FormatModbusFrame(result.RequestFrame)}");
+            AppendMc405Log($"RX: {FormatModbusFrame(result.ResponseFrame)}");
+            AppendMc405Log($"读取成功：收到 {result.Registers.Length} 个寄存器。");
+        }
+        catch (ModbusTcpException exception)
+        {
+            AppendMc405Log($"MC405 返回 Modbus 异常：{exception.Message}");
+        }
+        catch (Exception exception) when (exception is IOException or SocketException
+                                              or OperationCanceledException or InvalidOperationException)
+        {
+            _modbusTcpSession.Close();
+            SetMc405ConnectionUi(false);
+            Mc405ConnectionStatusText.Text = "连接中断";
+            Mc405ConnectionStatusText.Foreground = ThemeBrush("StateDangerBrush");
+            AppendMc405Log($"读取失败，连接已关闭：{exception.Message}");
+        }
+        finally
+        {
+            Mc405ReadButton.IsEnabled = _modbusTcpSession.IsConnected;
+            Mc405DisconnectButton.IsEnabled = _modbusTcpSession.IsConnected;
+        }
+    }
+
+    private void SetMc405ConnectionUi(bool isConnected)
+    {
+        Mc405HostTextBox.IsEnabled = !isConnected;
+        Mc405PortTextBox.IsEnabled = !isConnected;
+        Mc405ConnectButton.IsEnabled = !isConnected;
+        Mc405DisconnectButton.IsEnabled = isConnected;
+        Mc405ReadButton.IsEnabled = isConnected;
+    }
+
+    private void AppendMc405Log(string message)
+    {
+        var combined = Mc405LogTextBox.Text + $"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}";
+        Mc405LogTextBox.Text = combined.Length > MaxReceiveLength
+            ? combined[^MaxReceiveLength..]
+            : combined;
+        Mc405LogTextBox.ScrollToEnd();
+    }
+
+    private static string FormatModbusFrame(byte[] frame) =>
+        string.Join(' ', Convert.ToHexString(frame).Chunk(2).Select(pair => new string(pair)));
 
     private void RealtimeNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(RealtimePage, RealtimeNavButton, "实时监控");
