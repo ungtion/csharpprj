@@ -14,21 +14,21 @@ internal sealed class ModbusTcpSession : IDisposable
 
     public async Task ConnectAsync(string host, int port)
     {
-        Close();
+        Close(); // 先关闭已有连接，避免旧连接残留。
 
-        var client = new TcpClient();
+        var client = new TcpClient(); // 创建用于连接 Modbus TCP 服务器的客户端。
         try
         {
-            using var timeout = new CancellationTokenSource(TimeoutMilliseconds);
-            await client.ConnectAsync(host, port, timeout.Token);
-            _client = client;
-            IsConnected = true;
+            using var timeout = new CancellationTokenSource(TimeoutMilliseconds); // 设置连接超时。
+            await client.ConnectAsync(host, port, timeout.Token); // 异步连接指定主机和端口。
+            _client = client; // 保存已连接的客户端，供后续读写寄存器使用。
+            IsConnected = true; // 更新连接状态。
         }
         catch (Exception exception) when (exception is SocketException or IOException or OperationCanceledException
                                               or ArgumentException or InvalidOperationException)
         {
-            client.Dispose();
-            throw;
+            client.Dispose(); // 连接失败时释放客户端资源。
+            throw; // 保留并继续抛出原异常，让调用方处理连接失败。
         }
     }
 

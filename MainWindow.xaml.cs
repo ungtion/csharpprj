@@ -364,7 +364,7 @@ public partial class MainWindow : Window
         page.Opacity = 0; // 起始完全透明
         page.RenderTransform = new TranslateTransform(0, 8); // 起始位置向下偏移 8px
 
-        var duration = TimeSpan.FromMilliseconds(2000); // 动画时长
+        var duration = TimeSpan.FromMilliseconds(500); // 动画时长
         var easing = new QuadraticEase { EasingMode = EasingMode.EaseOut }; // 先快后慢，收尾更自然
         var fadeIn = new DoubleAnimation(0, 1, duration)
         {
