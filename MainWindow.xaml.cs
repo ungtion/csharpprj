@@ -4,8 +4,10 @@ using System.IO.Ports; // 提供 SerialPort，用于枚举本机串口。
 using System.Net.Sockets; // 提供 SocketException，用于处理 Modbus TCP 连接错误。
 using System.Security; // 提供 SecurityException，用于处理文件访问权限错误。
 using System.Text; // 提供 StringBuilder，用于构造寄存器读取结果。
+using System.Text.RegularExpressions; // 提供 Regex，用于去除 ADC 串口输出中的 ANSI 颜色转义。
 using System.Windows; // 提供 WPF 窗口、控件基类、路由事件及剪贴板等基础类型。
 using System.Windows.Controls; // 提供 Button、TextBox、ComboBox 等 WPF 控件类型。
+using System.Windows.Input; // 提供 KeyEventArgs / Key，用于 SN 输入框的回车自动采集。
 using System.Windows.Media; // 提供 Brush、Brushes、Transform 等界面绘制类型。
 using System.Windows.Media.Animation; // 提供页面切换时使用的动画和缓动类型。
 using System.Windows.Threading; // 提供 DispatcherTimer，用于刷新模拟数据和串口接收区。
@@ -15,7 +17,7 @@ namespace CSharpProject;
 
 /// <summary>
 /// 设备监控中心主窗口。界面由左侧导航、顶部面包屑、页面容器和运行环境提示组成，
-/// 页面容器同样是六个互斥显示的 ScrollViewer（设备总览 / MC405 通讯测试 / 实时监控 / bake / 报警记录 / 系统信息）。
+/// 页面容器同样是七个互斥显示的 ScrollViewer（设备总览 / ADC 采集 / MC405 通讯测试 / 实时监控 / bake / 报警记录 / 系统信息）。
 /// <para>
 /// 测点数值目前由 <see cref="UpdateSimulationDisplay"/> 生成模拟值，尚未接入 PLC；
 /// 串口通信是唯一与真实外部设备交互的部分，收发逻辑封装在 <see cref="SerialPortSession"/> 中。
@@ -48,15 +50,34 @@ public partial class MainWindow : Window
     // “计次示例”按钮的点击次数
     private int _demoClickCount;
 
+    // ===== ADC 采集页状态（移植自 slscs 的 SN+ADC 采集工具）=====
+    // 该页使用独立的串口会话，和“设备总览”里的通用串口收发面板互不干扰。
+    private static readonly Regex AnsiEscapeRegex = new(@"\x1B\[[0-9;]*m");
+
+    private readonly SerialPortSession _adcSerialSession = new();
+
+    // 串口数据按包到达，可能截断在某一行中间；先攒进缓冲区，凑满一行再解析
+    private readonly StringBuilder _adcLineBuffer = new();
+
+    private string _adcSavePath = "adc_record.txt";
+    private int? _adcCurrentValue;
+    private string _adcInputSn = "";
+    private string _adcFixedRangeText = "";
+    private int _adcCount;
+    private bool _adcAutoSaved;
+    private int? _adcLastAdc;
+
     public MainWindow()
     {
         InitializeComponent();
         UpdateSimulationDisplay();
         ScanSerialPorts();
+        RefreshAdcPorts();
 
         _simulationTimer.Tick += (_, _) => UpdateSimulationDisplay();
         _simulationTimer.Start();
         _receiveFlushTimer.Tick += (_, _) => RefreshSerialReceiveArea();
+        _receiveFlushTimer.Tick += (_, _) => RefreshAdcReceiveArea();
         _receiveFlushTimer.Start();
 
         Closed += (_, _) => ShutdownCommunication();
@@ -64,10 +85,10 @@ public partial class MainWindow : Window
 
     // 导航按钮和页面按同一顺序排列；新增页面时需同步更新这两个集合
     private Button[] NavigationButtons =>
-        [OverviewNavButton, Mc405ModbusNavButton, RealtimeNavButton, RecipeNavButton, AlarmNavButton, SystemNavButton];
+        [OverviewNavButton, AdcCollectNavButton, Mc405ModbusNavButton, RealtimeNavButton, RecipeNavButton, AlarmNavButton, SystemNavButton];
 
     private UIElement[] NavigationPages =>
-        [OverviewPage, Mc405ModbusPage, RealtimePage, RecipePage, AlarmPage, SystemPage];
+        [OverviewPage, AdcCollectPage, Mc405ModbusPage, RealtimePage, RecipePage, AlarmPage, SystemPage];
 
     /// <summary>
     /// 窗口关闭时统一停止定时器并释放会话资源，避免端口在进程退出前一直被占用。
@@ -78,7 +99,9 @@ public partial class MainWindow : Window
         _simulationTimer.Stop();
         _receiveFlushTimer.Stop();
         CloseSerialPort();
+        CloseAdcSerialPort();
         _serialSession.Dispose();
+        _adcSerialSession.Dispose();
         _modbusTcpSession.Dispose();
     }
 
@@ -170,6 +193,9 @@ public partial class MainWindow : Window
 
     private void Mc405ModbusNavClick(object sender, RoutedEventArgs e) =>
         ShowPage(Mc405ModbusPage, Mc405ModbusNavButton, "MC405 通讯测试");
+
+    private void AdcCollectNavClick(object sender, RoutedEventArgs e) =>
+        ShowPage(AdcCollectPage, AdcCollectNavButton, "ADC 采集");
 
     private async void ConnectMc405Click(object sender, RoutedEventArgs e)
     {
@@ -388,10 +414,13 @@ public partial class MainWindow : Window
     /// “计次示例”按钮：累加点击次数并直接显示在界面上。
     /// 早期版本用 Debug.WriteLine 输出到调试窗口，普通运行时看不到，现已改为界面反馈。
     /// </summary>
-    private void DemoClickCountClick(object sender, RoutedEventArgs e)
+    private async void DemoClickCountClick(object sender, RoutedEventArgs e)
     {
         _demoClickCount++;
-        DemoClickCountText.Text = $"已点击 {_demoClickCount} 次";
+        DemoClickCountText.Text = $"点击{_demoClickCount} 次";
+
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        DemoClickCountText.FontSize += 1;
     }
 
     /// <summary>
@@ -401,7 +430,7 @@ public partial class MainWindow : Window
     {
         // 打开中的端口不能重新枚举：重设 ItemsSource 会把已选端口清空，导致无法正常关闭
         if (_serialSession.IsOpen)
-        {
+        {   // 暂停当前线程 1 秒
             PortScanStatusText.Text = "串口已打开，请先关闭串口再重新扫描。";
             PortScanStatusText.Foreground = ThemeBrush("StateWarningBrush");
             return;
@@ -653,6 +682,486 @@ public partial class MainWindow : Window
             ? $"{_serialSession.PortName} 已连接 · {_serialSession.BaudRate}"
             : "未连接";
         SerialStatusText.Foreground = ThemeBrush(isOpen ? "StateSuccessBrush" : "TextSubtleBrush");
+    }
+
+    // ===== ADC 采集页：SN 绑定、串口采集、区间判定与 TXT 记录 =====
+    // 判定区间、日志格式与“Sensor Voltage:”解析规则和原 slscs 工具保持一致。
+
+    /// <summary>重新枚举系统串口并填充 ADC 采集页的端口下拉框。</summary>
+    private void RefreshAdcPorts()
+    {
+        if (_adcSerialSession.IsOpen)
+        {
+            AdcPortStatusText.Text = "串口已打开，请先关闭串口再刷新。";
+            AdcPortStatusText.Foreground = ThemeBrush("StateWarningBrush");
+            return;
+        }
+
+        try
+        {
+            var ports = SerialPort.GetPortNames()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(GetComPortNumber)
+                .ThenBy(port => port, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            AdcPortComboBox.ItemsSource = ports;
+            if (ports.Length > 0)
+            {
+                AdcPortComboBox.SelectedIndex = 0;
+                AdcPortStatusText.Text = $"检测到 {ports.Length} 个串口，等待打开。";
+                AdcPortStatusText.Foreground = ThemeBrush("StateSuccessBrush");
+            }
+            else
+            {
+                AdcPortStatusText.Text = "未检测到任何串口，请检查 CH340 驱动 / USB 线。";
+                AdcPortStatusText.Foreground = ThemeBrush("StateWarningBrush");
+            }
+
+            AppendAdcLog("串口列表刷新完成。");
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or SecurityException or Win32Exception)
+        {
+            AdcPortComboBox.ItemsSource = Array.Empty<string>();
+            AdcPortStatusText.Text = $"扫描串口失败：{exception.Message}";
+            AdcPortStatusText.Foreground = ThemeBrush("StateDangerBrush");
+        }
+    }
+
+    private void AdcRefreshPortsClick(object sender, RoutedEventArgs e) => RefreshAdcPorts();
+
+    private void AdcChoosePathClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存数据",
+            FileName = "adc_record.txt",
+            Filter = "文本文件 (*.txt)|*.txt"
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        _adcSavePath = dialog.FileName;
+        AdcSavePathText.Text = $"保存路径：{_adcSavePath}";
+        AppendAdcLog($"保存路径修改为：{_adcSavePath}");
+    }
+
+    /// <summary>向 TXT 追加一行采集记录；返回是否写入成功。</summary>
+    private bool WriteAdcRecord(string sn, int value, string description)
+    {
+        var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}, SN:{sn}, {description}, ADC:{value}{Environment.NewLine}";
+        try
+        {
+            File.AppendAllText(_adcSavePath, line, Encoding.UTF8);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            AppendAdcLog($"文件写入失败：{exception.Message}");
+            return false;
+        }
+    }
+
+    // 命中该区间视为采集达标，会自动保存一次
+    private static bool IsAdcTargetRange(int value) => value >= 1700 && value < 3200;
+
+    /// <summary>
+    /// 计算 ADC 值所属区间并返回判定文本。值变化时追加一行区间日志；
+    /// <paramref name="lockRange"/> 为 true 时把结果锁定为本次采集的最终区间。
+    /// </summary>
+    private string GetAdcRangeText(int value, bool lockRange = false)
+    {
+        string text;
+        if (value < 1500)
+        {
+            _adcCount = 1;
+            text = "挑出！！！！！！";
+        }
+        else if (value >= 1500 && value < 1700)
+        {
+            _adcCount = 2;
+            text = "区间(1460-1500)";
+        }
+        else if (value > 1700 && value < 2000)
+        {
+            _adcCount = 3;
+            text = "区间(1530-1570)";
+        }
+        else if (value > 2000 && value < 2400)
+        {
+            _adcCount = 4;
+            text = "区间(1580-1620)";
+        }
+        else if (value > 2400)
+        {
+            _adcCount = 5;
+            text = "区间(1680-1720)";
+        }
+        else
+        {
+            text = "超出标准区间";
+        }
+
+        if (lockRange)
+        {
+            _adcFixedRangeText = text;
+        }
+
+        if (_adcLastAdc != value)
+        {
+            var logLine =
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}, SN:{_adcInputSn}, ADC:{value}, count:{_adcCount}, 判定文本:{text}{Environment.NewLine}";
+            try
+            {
+                File.AppendAllText(_adcSavePath, logLine, Encoding.UTF8);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or SecurityException)
+            {
+                AppendAdcLog($"区间日志写入失败：{exception.Message}");
+            }
+
+            _adcLastAdc = value;
+        }
+
+        return text;
+    }
+
+    // 落在区间内部（留出边界余量）时显示绿色，其余显示红色，颜色取自主题状态色板
+    private void SetAdcValueColor(int value)
+    {
+        var brush = ThemeBrush("StateDangerBrush");
+        if (_adcCount == 2 && value >= 1460 && value < 1500)
+        {
+            brush = ThemeBrush("StateSuccessBrush");
+        }
+        else if (_adcCount == 3 && value >= 1530 && value < 1570)
+        {
+            brush = ThemeBrush("StateSuccessBrush");
+        }
+        else if (_adcCount == 4 && value >= 1580 && value < 1620)
+        {
+            brush = ThemeBrush("StateSuccessBrush");
+        }
+        else if (_adcCount == 5 && value >= 1680 && value < 1720)
+        {
+            brush = ThemeBrush("StateSuccessBrush");
+        }
+
+        AdcValueText.Foreground = brush;
+    }
+
+    /// <summary>在 UI 线程处理一个 ADC 值：刷新大数字与判定文本，命中目标区间时自动保存一次。</summary>
+    private void OnAdcValue(int value)
+    {
+        _adcCurrentValue = value;
+        if (_adcCount == 0)
+        {
+            SetAdcValueColor(value);
+            if (_adcFixedRangeText.Length == 0)
+            {
+                _adcFixedRangeText = GetAdcRangeText(value);
+            }
+
+            AdcValueText.Text = $"实时 {_adcFixedRangeText} ADC:{value}";
+
+            if (IsAdcTargetRange(value))
+            {
+                GetAdcRangeText(value, lockRange: true);
+                SetAdcValueColor(value);
+                if (_adcCount == 2)
+                {
+                    AdcValueText.Text = $"区间1(1460-1500) ADC:{value}";
+                }
+                else if (_adcCount == 3)
+                {
+                    AdcValueText.Text = $"区间2(1530-1570) ADC:{value}";
+                }
+                else if (_adcCount == 4)
+                {
+                    AdcValueText.Text = $"区间3(1580-1620) ADC:{value}";
+                }
+                else if (_adcCount == 5)
+                {
+                    AdcValueText.Text = $"区间4(1680-1720) ADC:{value}";
+                }
+                else
+                {
+                    AdcValueText.Text = $"else0 ADC:{value}";
+                }
+
+                if (!_adcAutoSaved)
+                {
+                    WriteAdcRecord(_adcInputSn, value, "自动采集");
+                    _adcAutoSaved = true;
+                    AppendAdcLog($"SN:{_adcInputSn} ADC {value} 自动保存完成");
+                }
+            }
+        }
+        else
+        {
+            SetAdcValueColor(value);
+            if (_adcCount == 2)
+            {
+                AdcValueText.Text = $"elif1区间(1460-1500) ADC:{value}";
+            }
+            else if (_adcCount == 3)
+            {
+                AdcValueText.Text = $"elif2区间(1530-1570) ADC:{value}";
+            }
+            else if (_adcCount == 4)
+            {
+                AdcValueText.Text = $"elif3区间(1580-1620) ADC:{value}";
+            }
+            else if (_adcCount == 5)
+            {
+                AdcValueText.Text = $"elif4区间(1680-1720) ADC:{value}";
+            }
+            else
+            {
+                GetAdcRangeText(value);
+                AdcValueText.Text = $"else0 ADC:{value}";
+            }
+        }
+    }
+
+    private void AdcManualSaveClick(object sender, RoutedEventArgs e)
+    {
+        if (_adcCurrentValue is null)
+        {
+            AppendAdcLog("暂无有效电压数据，无法保存。");
+            return;
+        }
+
+        if (_adcInputSn.Length == 0)
+        {
+            AppendAdcLog("请先输入 SN 码！");
+            return;
+        }
+
+        WriteAdcRecord(_adcInputSn, _adcCurrentValue.Value, "手动点击保存");
+        AppendAdcLog($"SN:{_adcInputSn} 手动保存 ADC:{_adcCurrentValue.Value}");
+        AdcSnTextBox.Clear();
+        _adcInputSn = "";
+        AdcSnTextBox.Focus();
+    }
+
+    /// <summary>向采集日志追加一行并滚动到底部；超长时从头部截断。</summary>
+    private void AppendAdcLog(string text)
+    {
+        var combined = AdcLogTextBox.Text + text + Environment.NewLine;
+        AdcLogTextBox.Text = combined.Length > MaxReceiveLength
+            ? combined[^MaxReceiveLength..]
+            : combined;
+        AdcLogTextBox.ScrollToEnd();
+    }
+
+    private void AdcSnKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            AutoOpenAdcBySn();
+        }
+    }
+
+    private void AdcAutoCollectClick(object sender, RoutedEventArgs e) => AutoOpenAdcBySn();
+
+    /// <summary>
+    /// 用输入框中的 SN 绑定本次采集：串口未打开时自动打开；已打开时按 SN 是否变化决定是否重置区间锁定。
+    /// </summary>
+    private void AutoOpenAdcBySn()
+    {
+        var snText = AdcSnTextBox.Text.Trim();
+        if (snText.Length == 0)
+        {
+            AppendAdcLog("SN 码不能为空！");
+            return;
+        }
+
+        if (_adcSerialSession.IsOpen)
+        {
+            if (_adcInputSn != snText)
+            {
+                _adcInputSn = snText;
+                ResetAdcCollectStatus();
+                AppendAdcLog($"更换 SN 为：{_adcInputSn}，区间锁定已解除，重新识别区间。");
+            }
+            else
+            {
+                AppendAdcLog("串口已打开，当前 SN 无需重复确认。");
+            }
+
+            return;
+        }
+
+        _adcInputSn = snText;
+        ResetAdcCollectStatus();
+        AppendAdcLog($"当前绑定 SN 码：{_adcInputSn}");
+        OpenAdcSerial();
+    }
+
+    /// <summary>重置本次采集的判定状态，大数字恢复为等待数据。</summary>
+    private void ResetAdcCollectStatus()
+    {
+        _adcCurrentValue = null;
+        _adcFixedRangeText = "";
+        _adcCount = 0;
+        _adcAutoSaved = false;
+        _adcLastAdc = null;
+        AdcValueText.Foreground = ThemeBrush("BrandBrush");
+        AdcValueText.Text = "当前 ADC 值：无数据";
+    }
+
+    private int GetSelectedAdcBaudRate() =>
+        AdcBaudComboBox.SelectedItem is ComboBoxItem { Content: string text }
+        && int.TryParse(text, out var baudRate)
+            ? baudRate
+            : 115200;
+
+    private void AdcTogglePortClick(object sender, RoutedEventArgs e)
+    {
+        if (_adcSerialSession.IsOpen)
+        {
+            CloseAdcSerialPort();
+            return;
+        }
+
+        OpenAdcSerial();
+    }
+
+    /// <summary>用当前端口和波特率打开 ADC 采集串口；预期错误写入日志，不让异常越过按钮事件。</summary>
+    private void OpenAdcSerial()
+    {
+        if (AdcPortComboBox.SelectedItem is not string portName || string.IsNullOrWhiteSpace(portName))
+        {
+            AppendAdcLog("错误：请先刷新并选择有效串口。");
+            return;
+        }
+
+        var baudRate = GetSelectedAdcBaudRate();
+        try
+        {
+            _adcSerialSession.Open(portName, baudRate);
+            UpdateAdcSerialUi(true);
+            AppendAdcLog($"串口 {portName} 连接成功，波特率 {baudRate}（8-N-1）。");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                              or InvalidOperationException or ArgumentException)
+        {
+            UpdateAdcSerialUi(false);
+            AppendAdcLog($"串口打开失败：{exception.Message}");
+        }
+    }
+
+    /// <summary>关闭 ADC 采集串口并恢复界面；未打开时调用无副作用。</summary>
+    private void CloseAdcSerialPort()
+    {
+        var wasOpen = _adcSerialSession.IsOpen;
+        try
+        {
+            _adcSerialSession.Close();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            AppendAdcLog($"关闭串口时出现异常：{exception.Message}");
+        }
+
+        UpdateAdcSerialUi(false);
+        if (wasOpen)
+        {
+            AppendAdcLog("串口已关闭。");
+        }
+    }
+
+    /// <summary>ADC 采集页的串口状态：按钮文案与配色、端口参数是否可改、状态文字。</summary>
+    private void UpdateAdcSerialUi(bool isOpen)
+    {
+        AdcTogglePortButton.Content = isOpen ? "关闭串口" : "手动打开串口";
+        AdcTogglePortButton.Background = ThemeBrush(isOpen ? "StateDangerBrush" : "BrandBrush");
+        AdcTogglePortButton.Foreground = Brushes.White;
+        AdcPortComboBox.IsEnabled = !isOpen;
+        AdcBaudComboBox.IsEnabled = !isOpen;
+        AdcRefreshPortsButton.IsEnabled = !isOpen;
+        AdcPortStatusText.Text = isOpen
+            ? $"{_adcSerialSession.PortName} 已连接 · {_adcSerialSession.BaudRate}"
+            : "串口未打开。";
+        AdcPortStatusText.Foreground = ThemeBrush(isOpen ? "StateSuccessBrush" : "TextSubtleBrush");
+    }
+
+    /// <summary>
+    /// UI 线程定时调用：取走 ADC 串口攒下的文本，按换行切分后逐行解析；
+    /// 末尾不完整的行留在缓冲区，等下次数据到达再拼接。
+    /// </summary>
+    private void RefreshAdcReceiveArea()
+    {
+        if (_adcSerialSession.TryTakePendingText(out var text, out _))
+        {
+            AppendAdcReceiveText(text);
+        }
+
+        if (_adcSerialSession.TryTakeFault(out var faultMessage))
+        {
+            AppendAdcLog($"读取中断：{faultMessage}");
+        }
+    }
+
+    private void AppendAdcReceiveText(string text)
+    {
+        _adcLineBuffer.Append(text);
+        if (_adcLineBuffer.Length > MaxReceiveLength)
+        {
+            _adcLineBuffer.Remove(0, _adcLineBuffer.Length - MaxReceiveLength);
+        }
+
+        var buffered = _adcLineBuffer.ToString();
+        var lastNewline = buffered.LastIndexOf('\n');
+        if (lastNewline < 0)
+        {
+            return;
+        }
+
+        _adcLineBuffer.Clear();
+        _adcLineBuffer.Append(buffered[(lastNewline + 1)..]);
+
+        foreach (var line in buffered[..lastNewline].Split('\n'))
+        {
+            ProcessAdcLine(line.TrimEnd('\r'));
+        }
+    }
+
+    /// <summary>显示一行串口输出；含 “Sensor Voltage:” 时解析其后的整数作为 ADC 值。</summary>
+    private void ProcessAdcLine(string line)
+    {
+        line = AnsiEscapeRegex.Replace(line, "");
+        AppendAdcLog(line);
+
+        const string marker = "Sensor Voltage:";
+        var index = line.IndexOf(marker, StringComparison.Ordinal);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var digits = new StringBuilder();
+        foreach (var c in line[(index + marker.Length)..].TrimStart())
+        {
+            if (!char.IsDigit(c))
+            {
+                break;
+            }
+
+            digits.Append(c);
+        }
+
+        if (digits.Length > 0 && int.TryParse(digits.ToString(), out var value))
+        {
+            OnAdcValue(value);
+        }
     }
 
     /// <summary>按资源键取画刷；主题色只在 XAML 色板里定义一份，代码不再硬编码 RGB。</summary>

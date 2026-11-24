@@ -118,10 +118,20 @@
                         </StackPanel>
                     </Button>
 
+                    <Button x:Name="AdcCollectNavButton" Style="{StaticResource NavigationButtonStyle}"
+                            Click="AdcCollectNavClick">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="◎" Foreground="#AAB6C5" FontSize="15" Width="26" />
+                            <TextBlock Text="ADC 采集"
+                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                       FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
                     <Button x:Name="Mc405ModbusNavButton" Style="{StaticResource NavigationButtonStyle}"
                             Click="Mc405ModbusNavClick">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="▣" Foreground="#58D0B5" FontSize="15" Width="26" />
+                            <TextBlock Text="▣" Foreground="#ffffff" FontSize="15" Width="26" />
                             <TextBlock Text="MC405 通讯测试"
                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                        FontSize="12" VerticalAlignment="Center" />
@@ -699,6 +709,111 @@
                 </StackPanel>
             </ScrollViewer>
 
+            <!-- ADC 采集页：移植自 slscs 的 SN+ADC 采集工具，配色统一为监控中心主题。 -->
+            <ScrollViewer x:Name="AdcCollectPage" Grid.Row="1" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel Style="{StaticResource PageContentStyle}">
+                    <TextBlock Text="ADC 采集" Foreground="#253248" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock Text="输入 SN 绑定串口后自动采集传感器电压，按区间判定并写入 TXT 记录"
+                               Foreground="#8290A3" FontSize="11" Margin="0,5,0,18" />
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="产品 SN" Style="{StaticResource MutedTextStyle}" />
+                                <TextBox x:Name="AdcSnTextBox" Height="38" Margin="0,6,0,0"
+                                         Padding="8,5" VerticalContentAlignment="Center"
+                                         ToolTip="输入 SN 后回车自动打开串口采集"
+                                         KeyDown="AdcSnKeyDown" />
+                            </StackPanel>
+                            <Button x:Name="AdcAutoCollectButton" Grid.Column="2" Content="确认并自动采集"
+                                    MinWidth="150" Height="38" Padding="16,0"
+                                    VerticalAlignment="Bottom" FontWeight="SemiBold"
+                                    Background="{StaticResource BrandBrush}" Foreground="White"
+                                    BorderThickness="0" Click="AdcAutoCollectClick" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="串口与保存位置" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="串口（COM）" Style="{StaticResource MutedTextStyle}" />
+                                    <ComboBox x:Name="AdcPortComboBox" Height="34" Margin="0,5,0,0"
+                                              VerticalContentAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="波特率" Style="{StaticResource MutedTextStyle}" />
+                                    <ComboBox x:Name="AdcBaudComboBox" Height="34" Margin="0,5,0,0"
+                                              VerticalContentAlignment="Center" SelectedIndex="3">
+                                        <ComboBoxItem Content="4800" />
+                                        <ComboBoxItem Content="9600" />
+                                        <ComboBoxItem Content="38400" />
+                                        <ComboBoxItem Content="115200" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                    <Button x:Name="AdcRefreshPortsButton" Content="刷新串口" Height="34"
+                                            Margin="0,0,8,0" Padding="14,0" Click="AdcRefreshPortsClick" />
+                                    <Button x:Name="AdcTogglePortButton" Content="手动打开串口" Height="34"
+                                            Margin="0,0,8,0" Padding="14,0" Click="AdcTogglePortClick" />
+                                    <Button x:Name="AdcChoosePathButton" Content="选择保存 TXT" Height="34"
+                                            Padding="14,0" Click="AdcChoosePathClick" />
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock x:Name="AdcPortStatusText" Text="正在读取串口信息…"
+                                       Foreground="#8290A3" FontSize="10" Margin="0,12,0,0" />
+                            <TextBlock x:Name="AdcSavePathText" Text="保存路径：adc_record.txt"
+                                       Foreground="#8290A3" FontSize="10" Margin="0,5,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Background="{StaticResource BrandSoftBrush}"
+                            BorderBrush="#CDE9E2" Padding="18,20" Margin="0,0,0,14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="AdcValueText" Text="当前 ADC 值：无数据"
+                                       Foreground="{StaticResource BrandBrush}"
+                                       FontSize="34" FontWeight="Bold"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" TextAlignment="Center" />
+                            <Button x:Name="AdcManualSaveButton" Grid.Column="1" Content="保存当前电压值"
+                                    MinWidth="170" Height="48" Padding="20,0" Margin="16,0,0,0"
+                                    VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold"
+                                    Background="{StaticResource BrandBrush}" Foreground="White"
+                                    BorderThickness="0" Click="AdcManualSaveClick" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="采集日志" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBox x:Name="AdcLogTextBox" IsReadOnly="True" AcceptsReturn="True"
+                                     Height="220" Margin="0,12,0,0" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                                     Padding="10" Background="#F8FAFC" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
             <!-- MC405 Modbus TCP 只读测试页面；不提供寄存器写入或运动控制。 -->
             <ScrollViewer x:Name="Mc405ModbusPage" Grid.Row="1" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto">
@@ -895,7 +1010,7 @@
                                 Background="{StaticResource BrandSoftBrush}"
                                 Foreground="{StaticResource BrandBrush}"
                                 BorderThickness="0" FontSize="13" Cursor="Hand" />
-                        <TextBlock x:Name="DemoClickCountText" Text="已点击 0 次"
+                        <TextBlock x:Name="DemoClickCountText" Text="点击 0 次"
                                    Foreground="{StaticResource TextMutedBrush}"
                                    FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" />
                     </StackPanel>

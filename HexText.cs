@@ -9,7 +9,7 @@ namespace CSharpProject;
 internal static class HexText
 {
     // 查表取字符，避免格式化每个字节时创建额外的格式化中间字符串
-    private const string HexDigits = "0123456789ABCDEF";
+    private const string HexDigits = "0123456789ABCDEF";//私有 常量 字符串 
 
     /// <summary>
     /// 解析 <c>01 03 00 00 00 0A</c>、<c>0x01,0x03</c> 这类写法。
@@ -25,7 +25,11 @@ internal static class HexText
         var digits = new StringBuilder(text.Length);
 
         // 允许常见的 0x 前缀；先移除前缀，再统一检查剩余字符，避免分隔符规则分散在解析循环里
-        var normalized = text.Replace("0x", string.Empty, StringComparison.OrdinalIgnoreCase);
+        var normalized = text.Replace(
+        "0x", //查找文字
+        string.Empty,//替换成空白 
+        StringComparison.OrdinalIgnoreCase);//不区分大小写
+
         foreach (var character in normalized)
         {
             if (char.IsWhiteSpace(character) || character is ',' or '-' or ';' or ':')
