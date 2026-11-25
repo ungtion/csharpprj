@@ -59,13 +59,13 @@ public partial class MainWindow : Window
     // 串口数据按包到达，可能截断在某一行中间；先攒进缓冲区，凑满一行再解析
     private readonly StringBuilder _adcLineBuffer = new();
 
-    private string _adcSavePath = "adc_record.txt";
-    private int? _adcCurrentValue;
-    private string _adcInputSn = "";
-    private string _adcFixedRangeText = "";
-    private int _adcCount;
-    private bool _adcAutoSaved;
-    private int? _adcLastAdc;
+    private string _adcSavePath = "adc_record.txt"; // ADC 记录保存路径
+    private int? _adcCurrentValue; // 当前接收到的 ADC 值；未收到有效数据时为 null
+    private string _adcInputSn = ""; // 当前设备的 SN 码
+    private string _adcFixedRangeText = ""; // 当前锁定或识别到的 ADC 区间名称
+    private int _adcCount; // 当前 ADC 所属区间编号，0 表示尚未识别
+    private bool _adcAutoSaved; // 当前 SN 是否已完成一次自动保存
+    private int? _adcLastAdc; // 上一次成功写入记录的 ADC 值；用于避免重复保存
 
     public MainWindow()
     {
