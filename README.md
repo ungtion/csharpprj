@@ -60,7 +60,7 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 5. 当前值会显示在页面上。代码将 `1700 <= ADC < 3200` 视为自动保存目标范围；命中后对当前 SN 自动保存一次。也可以点击“保存当前电压值”手动保存。
 6. 更改 SN 后会重置当前采集的区间状态。采集记录和区间变化日志会追加写入所选 TXT 文件。
 
-保存失败或串口异常会显示在 ADC 日志中。ADC 分区判定及显示规则位于 `MainWindow.xaml.cs` 的 `GetAdcRangeText`、`SetAdcValueColor` 和 `OnAdcValue`，如需匹配实际产品标准，应以设备/工艺规格确认这些阈值。
+保存失败或串口异常会显示在 ADC 日志中。ADC 串口文本解析、SN/区间状态、判定和记录写入由 `AdcCollectionService.cs` 负责；`MainWindow.xaml.cs` 负责串口连接和界面更新。如需匹配实际产品标准，应以设备/工艺规格确认服务中的 ADC 阈值。
 
 ### MC405 Modbus TCP 通讯测试
 
@@ -86,7 +86,8 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 | `App.xaml` | WPF 应用入口配置、启动窗口和应用级颜色/控件样式。 |
 | `App.xaml.cs` | 应用启动时注册 UI 线程未处理异常提示。 |
 | `MainWindow.xaml` | 主窗口布局、导航、页面控件、控件名称和事件绑定。 |
-| `MainWindow.xaml.cs` | 页面切换、模拟数据、界面事件、通用串口和 ADC 流程、Modbus TCP 页面交互。 |
+| `MainWindow.xaml.cs` | 页面切换、模拟数据、界面事件、通用串口和 ADC 串口连接、Modbus TCP 页面交互。 |
+| `AdcCollectionService.cs` | 封装 ADC 接收文本解析、采集状态与区间判定、记录文件写入。 |
 | `SerialPortSession.cs` | 封装单个串口的打开、关闭、文本/字节发送和后台接收缓冲。 |
 | `HexText.cs` | 十六进制文本与字节数组之间的解析和格式化。 |
 | `ModbusCrc16.cs` | 计算 CRC-16/MODBUS、为 RTU 帧追加 CRC，并格式化 CRC 字节。 |
@@ -104,19 +105,22 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 | `_receiveFlushTimer` | 每 60 毫秒从串口会话取出累积数据并更新界面。 |
 | `_serialSession` | 设备总览通用串口的会话对象。 |
 | `_adcSerialSession` | ADC 页面专用串口会话对象，与 `_serialSession` 分离。 |
+| `_adcCollectionService` | ADC 业务对象，负责解析接收文本、维护本次采集状态、区间判定和记录写入。 |
 | `_modbusTcpSession` | MC405 Modbus TCP 连接和读取会话。 |
 | `_totalReceivedBytes` | 通用串口接收区当前统计的字节数；清空接收区时归零。 |
 | `_demoClickCount` | “计次示例”按钮累计点击次数。 |
-| `AnsiEscapeRegex` | 移除 ADC 终端输出中的 ANSI 颜色转义码。 |
-| `_adcLineBuffer` | 暂存 ADC 串口接收的未完整行，等后续数据到齐再解析。 |
-| `_adcSavePath` | ADC TXT 记录的写入路径。 |
-| `_adcCurrentValue` | 最近一次解析到的 ADC 值；没有有效数据时为 `null`。 |
-| `_adcInputSn` | 当前采集绑定的产品 SN。 |
-| `_adcFixedRangeText` | 当前显示/锁定的 ADC 区间描述。 |
-| `_adcCount` | 当前 ADC 判定区间编号；`0` 表示尚未锁定。 |
-| `_adcAutoSaved` | 当前 SN 是否已经触发自动保存，避免反复自动写入。 |
-| `_adcLastAdc` | 上次写入区间日志的 ADC 值，用于过滤相同值的重复日志。 |
 | `NavigationButtons` / `NavigationPages` | 导航按钮与页面的对应集合，供 `ShowPage` 同步切换状态。 |
+
+### `AdcCollectionService.cs`
+
+| 字段/属性 | 用途 |
+|---|---|
+| `SavePath` | ADC 记录文件的写入路径。 |
+| `SerialNumber` / `CurrentValue` | 当前绑定的产品 SN 和最近解析到的 ADC 值。 |
+| `_lineBuffer` | 暂存未完整的串口行，待后续数据到达后再解析。 |
+| `_fixedRangeText` / `_count` | 当前区间文本和区间编号。 |
+| `_autoSaved` | 当前 SN 是否已经触发自动保存。 |
+| `_lastAdc` | 上次写入区间日志的 ADC 值，用于过滤相同值的重复日志。 |
 
 ### `SerialPortSession.cs`
 

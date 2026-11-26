@@ -4,7 +4,6 @@ using System.IO.Ports; // 提供 SerialPort，用于枚举本机串口。
 using System.Net.Sockets; // 提供 SocketException，用于处理 Modbus TCP 连接错误。
 using System.Security; // 提供 SecurityException，用于处理文件访问权限错误。
 using System.Text; // 提供 StringBuilder，用于构造寄存器读取结果。
-using System.Text.RegularExpressions; // 提供 Regex，用于去除 ADC 串口输出中的 ANSI 颜色转义。
 using System.Windows; // 提供 WPF 窗口、控件基类、路由事件及剪贴板等基础类型。
 using System.Windows.Controls; // 提供 Button、TextBox、ComboBox 等 WPF 控件类型。
 using System.Windows.Input; // 提供 KeyEventArgs / Key，用于 SN 输入框的回车自动采集。
@@ -21,6 +20,10 @@ namespace CSharpProject;
 /// <para>
 /// 测点数值目前由 <see cref="UpdateSimulationDisplay"/> 生成模拟值，尚未接入 PLC；
 /// 串口通信是唯一与真实外部设备交互的部分，收发逻辑封装在 <see cref="SerialPortSession"/> 中。
+/// </para>
+/// <para>
+/// 继承关系：<see cref="Window"/> 是 WPF 提供的基类，<see cref="MainWindow"/> 是派生类；
+/// 本类在继承窗口生命周期与基础交互能力的同时，扩展设备监控界面和业务操作。
 /// </para>
 /// </summary>
 public partial class MainWindow : Window
@@ -52,20 +55,8 @@ public partial class MainWindow : Window
 
     // ===== ADC 采集页状态（移植自 slscs 的 SN+ADC 采集工具）=====
     // 该页使用独立的串口会话，和“设备总览”里的通用串口收发面板互不干扰。
-    private static readonly Regex AnsiEscapeRegex = new(@"\x1B\[[0-9;]*m");
-
     private readonly SerialPortSession _adcSerialSession = new();
-
-    // 串口数据按包到达，可能截断在某一行中间；先攒进缓冲区，凑满一行再解析
-    private readonly StringBuilder _adcLineBuffer = new();
-
-    private string _adcSavePath = "adc_record.txt"; // ADC 记录保存路径
-    private int? _adcCurrentValue; // 当前接收到的 ADC 值；未收到有效数据时为 null
-    private string _adcInputSn = ""; // 当前设备的 SN 码
-    private string _adcFixedRangeText = ""; // 当前锁定或识别到的 ADC 区间名称
-    private int _adcCount; // 当前 ADC 所属区间编号，0 表示尚未识别
-    private bool _adcAutoSaved; // 当前 SN 是否已完成一次自动保存
-    private int? _adcLastAdc; // 上一次成功写入记录的 ADC 值；用于避免重复保存
+    private readonly AdcCollectionService _adcCollectionService = new();
 
     public MainWindow()
     {
@@ -686,7 +677,6 @@ public partial class MainWindow : Window
 
     // ===== ADC 采集页：SN 绑定、串口采集、区间判定与 TXT 记录 =====
     // 判定区间、日志格式与“Sensor Voltage:”解析规则和原 slscs 工具保持一致。
-
     /// <summary>重新枚举系统串口并填充 ADC 采集页的端口下拉框。</summary>
     private void RefreshAdcPorts()
     {
@@ -745,209 +735,58 @@ public partial class MainWindow : Window
             return;
         }
 
-        _adcSavePath = dialog.FileName;
-        AdcSavePathText.Text = $"保存路径：{_adcSavePath}";
-        AppendAdcLog($"保存路径修改为：{_adcSavePath}");
-    }
-
-    /// <summary>向 TXT 追加一行采集记录；返回是否写入成功。</summary>
-    private bool WriteAdcRecord(string sn, int value, string description)
-    {
-        var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}, SN:{sn}, {description}, ADC:{value}{Environment.NewLine}";
-        try
-        {
-            File.AppendAllText(_adcSavePath, line, Encoding.UTF8);
-            return true;
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or SecurityException)
-        {
-            AppendAdcLog($"文件写入失败：{exception.Message}");
-            return false;
-        }
-    }
-
-    // 命中该区间视为采集达标，会自动保存一次
-    private static bool IsAdcTargetRange(int value) => value >= 1700 && value < 3200;
-
-    /// <summary>
-    /// 计算 ADC 值所属区间并返回判定文本。值变化时追加一行区间日志；
-    /// <paramref name="lockRange"/> 为 true 时把结果锁定为本次采集的最终区间。
-    /// </summary>
-    private string GetAdcRangeText(int value, bool lockRange = false)
-    {
-        string text;
-        if (value < 1500)
-        {
-            _adcCount = 1;
-            text = "挑出！！！！！！";
-        }
-        else if (value >= 1500 && value < 1700)
-        {
-            _adcCount = 2;
-            text = "区间(1460-1500)";
-        }
-        else if (value > 1700 && value < 2000)
-        {
-            _adcCount = 3;
-            text = "区间(1530-1570)";
-        }
-        else if (value > 2000 && value < 2400)
-        {
-            _adcCount = 4;
-            text = "区间(1580-1620)";
-        }
-        else if (value > 2400)
-        {
-            _adcCount = 5;
-            text = "区间(1680-1720)";
-        }
-        else
-        {
-            text = "超出标准区间";
-        }
-
-        if (lockRange)
-        {
-            _adcFixedRangeText = text;
-        }
-
-        if (_adcLastAdc != value)
-        {
-            var logLine =
-                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}, SN:{_adcInputSn}, ADC:{value}, count:{_adcCount}, 判定文本:{text}{Environment.NewLine}";
-            try
-            {
-                File.AppendAllText(_adcSavePath, logLine, Encoding.UTF8);
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException or SecurityException)
-            {
-                AppendAdcLog($"区间日志写入失败：{exception.Message}");
-            }
-
-            _adcLastAdc = value;
-        }
-
-        return text;
-    }
-
-    // 落在区间内部（留出边界余量）时显示绿色，其余显示红色，颜色取自主题状态色板
-    private void SetAdcValueColor(int value)
-    {
-        var brush = ThemeBrush("StateDangerBrush");
-        if (_adcCount == 2 && value >= 1460 && value < 1500)
-        {
-            brush = ThemeBrush("StateSuccessBrush");
-        }
-        else if (_adcCount == 3 && value >= 1530 && value < 1570)
-        {
-            brush = ThemeBrush("StateSuccessBrush");
-        }
-        else if (_adcCount == 4 && value >= 1580 && value < 1620)
-        {
-            brush = ThemeBrush("StateSuccessBrush");
-        }
-        else if (_adcCount == 5 && value >= 1680 && value < 1720)
-        {
-            brush = ThemeBrush("StateSuccessBrush");
-        }
-
-        AdcValueText.Foreground = brush;
+        _adcCollectionService.SavePath = dialog.FileName;
+        AdcSavePathText.Text = $"保存路径：{_adcCollectionService.SavePath}";
+        AppendAdcLog($"保存路径修改为：{_adcCollectionService.SavePath}");
     }
 
     /// <summary>在 UI 线程处理一个 ADC 值：刷新大数字与判定文本，命中目标区间时自动保存一次。</summary>
     private void OnAdcValue(int value)
     {
-        _adcCurrentValue = value;
-        if (_adcCount == 0)
+        var update = _adcCollectionService.ProcessValue(value);
+        AdcValueText.Foreground = ThemeBrush(
+            update.IsWithinAcceptedRange ? "StateSuccessBrush" : "StateDangerBrush");
+        AdcValueText.Text = update.DisplayText;
+
+        if (update.RangeLogError is not null)
         {
-            SetAdcValueColor(value);
-            if (_adcFixedRangeText.Length == 0)
-            {
-                _adcFixedRangeText = GetAdcRangeText(value);
-            }
-
-            AdcValueText.Text = $"实时 {_adcFixedRangeText} ADC:{value}";
-
-            if (IsAdcTargetRange(value))
-            {
-                GetAdcRangeText(value, lockRange: true);
-                SetAdcValueColor(value);
-                if (_adcCount == 2)
-                {
-                    AdcValueText.Text = $"区间1(1460-1500) ADC:{value}";
-                }
-                else if (_adcCount == 3)
-                {
-                    AdcValueText.Text = $"区间2(1530-1570) ADC:{value}";
-                }
-                else if (_adcCount == 4)
-                {
-                    AdcValueText.Text = $"区间3(1580-1620) ADC:{value}";
-                }
-                else if (_adcCount == 5)
-                {
-                    AdcValueText.Text = $"区间4(1680-1720) ADC:{value}";
-                }
-                else
-                {
-                    AdcValueText.Text = $"else0 ADC:{value}";
-                }
-
-                if (!_adcAutoSaved)
-                {
-                    WriteAdcRecord(_adcInputSn, value, "自动采集");
-                    _adcAutoSaved = true;
-                    AppendAdcLog($"SN:{_adcInputSn} ADC {value} 自动保存完成");
-                }
-            }
+            AppendAdcLog($"区间日志写入失败：{update.RangeLogError}");
         }
-        else
+
+        if (update.AutoSaveAttempted)
         {
-            SetAdcValueColor(value);
-            if (_adcCount == 2)
+            if (update.AutoSaveError is not null)
             {
-                AdcValueText.Text = $"elif1区间(1460-1500) ADC:{value}";
+                AppendAdcLog($"文件写入失败：{update.AutoSaveError}");
             }
-            else if (_adcCount == 3)
-            {
-                AdcValueText.Text = $"elif2区间(1530-1570) ADC:{value}";
-            }
-            else if (_adcCount == 4)
-            {
-                AdcValueText.Text = $"elif3区间(1580-1620) ADC:{value}";
-            }
-            else if (_adcCount == 5)
-            {
-                AdcValueText.Text = $"elif4区间(1680-1720) ADC:{value}";
-            }
-            else
-            {
-                GetAdcRangeText(value);
-                AdcValueText.Text = $"else0 ADC:{value}";
-            }
+
+            AppendAdcLog($"SN:{_adcCollectionService.SerialNumber} ADC {value} 自动保存完成");
         }
     }
 
     private void AdcManualSaveClick(object sender, RoutedEventArgs e)
     {
-        if (_adcCurrentValue is null)
+        if (_adcCollectionService.CurrentValue is not int currentValue)
         {
             AppendAdcLog("暂无有效电压数据，无法保存。");
             return;
         }
 
-        if (_adcInputSn.Length == 0)
+        if (_adcCollectionService.SerialNumber.Length == 0)
         {
             AppendAdcLog("请先输入 SN 码！");
             return;
         }
 
-        WriteAdcRecord(_adcInputSn, _adcCurrentValue.Value, "手动点击保存");
-        AppendAdcLog($"SN:{_adcInputSn} 手动保存 ADC:{_adcCurrentValue.Value}");
+        var saveError = _adcCollectionService.TryWriteRecord(currentValue, "手动点击保存");
+        if (saveError is not null)
+        {
+            AppendAdcLog($"文件写入失败：{saveError}");
+        }
+
+        AppendAdcLog($"SN:{_adcCollectionService.SerialNumber} 手动保存 ADC:{currentValue}");
         AdcSnTextBox.Clear();
-        _adcInputSn = "";
+        _adcCollectionService.ClearSerialNumber();
         AdcSnTextBox.Focus();
     }
 
@@ -985,11 +824,11 @@ public partial class MainWindow : Window
 
         if (_adcSerialSession.IsOpen)
         {
-            if (_adcInputSn != snText)
+            if (_adcCollectionService.SerialNumber != snText)
             {
-                _adcInputSn = snText;
+                _adcCollectionService.BindSerialNumber(snText);
                 ResetAdcCollectStatus();
-                AppendAdcLog($"更换 SN 为：{_adcInputSn}，区间锁定已解除，重新识别区间。");
+                AppendAdcLog($"更换 SN 为：{_adcCollectionService.SerialNumber}，区间锁定已解除，重新识别区间。");
             }
             else
             {
@@ -999,20 +838,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        _adcInputSn = snText;
+        _adcCollectionService.BindSerialNumber(snText);
         ResetAdcCollectStatus();
-        AppendAdcLog($"当前绑定 SN 码：{_adcInputSn}");
+        AppendAdcLog($"当前绑定 SN 码：{_adcCollectionService.SerialNumber}");
         OpenAdcSerial();
     }
 
     /// <summary>重置本次采集的判定状态，大数字恢复为等待数据。</summary>
     private void ResetAdcCollectStatus()
     {
-        _adcCurrentValue = null;
-        _adcFixedRangeText = "";
-        _adcCount = 0;
-        _adcAutoSaved = false;
-        _adcLastAdc = null;
+        _adcCollectionService.Reset();
         AdcValueText.Foreground = ThemeBrush("BrandBrush");
         AdcValueText.Text = "当前 ADC 值：无数据";
     }
@@ -1112,55 +947,13 @@ public partial class MainWindow : Window
 
     private void AppendAdcReceiveText(string text)
     {
-        _adcLineBuffer.Append(text);
-        if (_adcLineBuffer.Length > MaxReceiveLength)
+        foreach (var line in _adcCollectionService.ProcessReceivedText(text))
         {
-            _adcLineBuffer.Remove(0, _adcLineBuffer.Length - MaxReceiveLength);
-        }
-
-        var buffered = _adcLineBuffer.ToString();
-        var lastNewline = buffered.LastIndexOf('\n');
-        if (lastNewline < 0)
-        {
-            return;
-        }
-
-        _adcLineBuffer.Clear();
-        _adcLineBuffer.Append(buffered[(lastNewline + 1)..]);
-
-        foreach (var line in buffered[..lastNewline].Split('\n'))
-        {
-            ProcessAdcLine(line.TrimEnd('\r'));
-        }
-    }
-
-    /// <summary>显示一行串口输出；含 “Sensor Voltage:” 时解析其后的整数作为 ADC 值。</summary>
-    private void ProcessAdcLine(string line)
-    {
-        line = AnsiEscapeRegex.Replace(line, "");
-        AppendAdcLog(line);
-
-        const string marker = "Sensor Voltage:";
-        var index = line.IndexOf(marker, StringComparison.Ordinal);
-        if (index < 0)
-        {
-            return;
-        }
-
-        var digits = new StringBuilder();
-        foreach (var c in line[(index + marker.Length)..].TrimStart())
-        {
-            if (!char.IsDigit(c))
+            AppendAdcLog(line.Text);
+            if (line.Value is int value)
             {
-                break;
+                OnAdcValue(value);
             }
-
-            digits.Append(c);
-        }
-
-        if (digits.Length > 0 && int.TryParse(digits.ToString(), out var value))
-        {
-            OnAdcValue(value);
         }
     }
 
