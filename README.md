@@ -25,7 +25,7 @@
 dotnet run --project .\CSharpProject.csproj
 ```
 
-也可以用 Visual Studio 或 VS Code 打开 `CSharpProject.csproj` 后运行。程序启动时由 `App.xaml` 打开 `MainWindow.xaml`。
+也可以用 Visual Studio 或 VS Code 打开 `CSharpProject.csproj` 后运行。程序启动时由 `App.xaml` 打开 `Views/MainWindow.xaml`。
 
 ## 界面功能与使用方法
 
@@ -60,7 +60,7 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 5. 当前值会显示在页面上。代码将 `1700 <= ADC < 3200` 视为自动保存目标范围；命中后对当前 SN 自动保存一次。也可以点击“保存当前电压值”手动保存。
 6. 更改 SN 后会重置当前采集的区间状态。采集记录和区间变化日志会追加写入所选 TXT 文件。
 
-保存失败或串口异常会显示在 ADC 日志中。ADC 串口文本解析、SN/区间状态、判定和记录写入由 `AdcCollectionService.cs` 负责；`MainWindow.xaml.cs` 负责串口连接和界面更新。如需匹配实际产品标准，应以设备/工艺规格确认服务中的 ADC 阈值。
+保存失败或串口异常会显示在 ADC 日志中。ADC 串口文本解析、SN/区间状态、判定和记录写入由 `Services/AdcCollectionService.cs` 负责；`ViewModels/MainWindowViewModel.cs` 协调串口会话并更新界面状态。如需匹配实际产品标准，应以设备/工艺规格确认服务中的 ADC 阈值。
 
 ### MC405 Modbus TCP 通讯测试
 
@@ -84,34 +84,48 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 | 文件 | 职责 |
 |---|---|
 | `App.xaml` | WPF 应用入口配置、启动窗口和应用级颜色/控件样式。 |
-| `App.xaml.cs` | 应用启动时注册 UI 线程未处理异常提示。 |
-| `MainWindow.xaml` | 主窗口布局、导航、页面控件、控件名称和事件绑定。 |
-| `MainWindow.xaml.cs` | 页面切换、模拟数据、界面事件、通用串口和 ADC 串口连接、Modbus TCP 页面交互。 |
-| `AdcCollectionService.cs` | 封装 ADC 接收文本解析、采集状态与区间判定、记录文件写入。 |
-| `SerialPortSession.cs` | 封装单个串口的打开、关闭、文本/字节发送和后台接收缓冲。 |
-| `HexText.cs` | 十六进制文本与字节数组之间的解析和格式化。 |
-| `ModbusCrc16.cs` | 计算 CRC-16/MODBUS、为 RTU 帧追加 CRC，并格式化 CRC 字节。 |
-| `ModbusTcpSession.cs` | 封装 Modbus TCP 连接及功能码 03/04 的寄存器读取、响应校验和资源释放。 |
+| `Application/App.xaml.cs` | 应用启动时注册 UI 线程未处理异常提示。 |
+| `Views/MainWindow.xaml` | 主窗口布局、绑定、命令和视图样式，不包含业务事件处理器。 |
+| `Views/MainWindow.xaml.cs` | 组合 View 与 ViewModel，并在窗口关闭时释放 ViewModel。 |
+| `ViewModels/MainWindowViewModel.cs` | 页面状态、显示数据、命令、串口与 Modbus 流程协调和界面日志。 |
+| `ViewModels/ObservableObject.cs` | 提供属性变更通知基类。 |
+| `ViewModels/RelayCommand.cs` | 提供同步、异步及带参数的 ICommand 实现。 |
+| `Services/IInteractionService.cs` / `Views/WpfInteractionService.cs` | 抽象并实现文件选择、剪贴板等需要 WPF 视图参与的交互。 |
+| `Views/TextBoxAutoScroll.cs` / `Views/PageTransition.cs` | 视图层附加行为：日志滚动到底部和页面入场动画。 |
+| `Services/AdcCollectionService.cs` | 封装 ADC 接收文本解析、采集状态与区间判定、记录文件写入。 |
+| `Communication/SerialPortSession.cs` | 封装单个串口的打开、关闭、文本/字节发送和后台接收缓冲。 |
+| `Utilities/HexText.cs` | 十六进制文本与字节数组之间的解析和格式化。 |
+| `Utilities/ModbusCrc16.cs` | 计算 CRC-16/MODBUS、为 RTU 帧追加 CRC，并格式化 CRC 字节。 |
+| `Communication/ModbusTcpSession.cs` | 封装 Modbus TCP 连接及功能码 03/04 的寄存器读取、响应校验和资源释放。 |
 | `CSharpProject.csproj` | 项目目标框架、WPF 配置和 NuGet 依赖。 |
+
+C# 源文件按职责放在 `Application/`、`Views/`、`ViewModels/`、`Services/`、`Communication/` 和 `Utilities/` 中；根目录保留项目文件与文档。WPF 窗口 XAML 与其 code-behind 保持在同一个 `Views/` 目录。
 
 ## 关键字段与变量
 
-### `MainWindow.xaml.cs`
+### `ViewModels/MainWindowViewModel.cs`
 
 | 字段 | 用途 |
 |---|---|
-| `MaxReceiveLength` | 接收区及日志文本的最大保留长度，超出时截掉较早内容。 |
 | `_simulationTimer` | 每秒触发一次模拟测点刷新。 |
 | `_receiveFlushTimer` | 每 60 毫秒从串口会话取出累积数据并更新界面。 |
 | `_serialSession` | 设备总览通用串口的会话对象。 |
 | `_adcSerialSession` | ADC 页面专用串口会话对象，与 `_serialSession` 分离。 |
 | `_adcCollectionService` | ADC 业务对象，负责解析接收文本、维护本次采集状态、区间判定和记录写入。 |
 | `_modbusTcpSession` | MC405 Modbus TCP 连接和读取会话。 |
-| `_totalReceivedBytes` | 通用串口接收区当前统计的字节数；清空接收区时归零。 |
-| `_demoClickCount` | “计次示例”按钮累计点击次数。 |
-| `NavigationButtons` / `NavigationPages` | 导航按钮与页面的对应集合，供 `ShowPage` 同步切换状态。 |
+| `CurrentPage` | 当前显示页面及导航面包屑状态。 |
+| `SerialPorts` / `SelectedSerialPort` | 通用串口列表及选中项，供两个串口下拉框绑定。 |
+| `ReceiveText` / `AdcLogText` / `Mc405LogText` | 绑定到界面日志框的有长度上限的文本。 |
+| `IInteractionService` | 提供文件对话框和剪贴板操作，以免 ViewModel 直接依赖窗口控件。 |
 
-### `AdcCollectionService.cs`
+### MVVM 结构
+
+- **View**：`Views/MainWindow.xaml` 通过数据绑定显示 ViewModel 属性，并通过 `ICommand` 调用操作。
+- **ViewModel**：`ViewModels/MainWindowViewModel.cs` 管理界面状态、命令和服务之间的协调。
+- **Model/服务**：`Services/AdcCollectionService.cs`、`Communication/SerialPortSession.cs`、`Communication/ModbusTcpSession.cs` 等封装业务状态或设备通信。
+- `Views/MainWindow.xaml.cs` 只负责创建 ViewModel、设置 `DataContext` 和释放资源。
+
+### `Services/AdcCollectionService.cs`
 
 | 字段/属性 | 用途 |
 |---|---|
@@ -122,7 +136,7 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 | `_autoSaved` | 当前 SN 是否已经触发自动保存。 |
 | `_lastAdc` | 上次写入区间日志的 ADC 值，用于过滤相同值的重复日志。 |
 
-### `SerialPortSession.cs`
+### `Communication/SerialPortSession.cs`
 
 | 字段/属性 | 用途 |
 |---|---|
@@ -137,7 +151,7 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 
 串口参数目前固定为 8 数据位、无校验、1 停止位、无流控（8-N-1）。
 
-### `ModbusTcpSession.cs`
+### `Communication/ModbusTcpSession.cs`
 
 | 字段/属性 | 用途 |
 |---|---|
@@ -152,20 +166,20 @@ ADC 页面使用独立的串口会话，与设备总览中的通用串口互不�
 
 ### 通用串口
 
-1. `MainWindow` 调用 `SerialPortSession.Open` 打开端口。
+1. XAML 命令调用 `MainWindowViewModel`，由它调用 `Communication/SerialPortSession.Open` 打开端口。
 2. `SerialPort.DataReceived` 在后台线程触发；`OnDataReceived` 只读取数据并写入受锁保护的缓冲区，不直接操作 WPF 控件。
 3. `_receiveFlushTimer` 在 UI 线程定时调用 `TryTakePendingText` 和 `TryTakeFault`。
-4. `MainWindow` 更新接收文本框、字节数和日志。
+4. `MainWindowViewModel` 更新可绑定的接收文本、字节数和日志属性，View 自动刷新。
 5. 关闭窗口时停止定时器并释放串口与 TCP 会话。
 
 ### 十六进制发送
 
-`SendClick` → `HexText.TryParse` →（可选）`ModbusCrc16.AppendCrc` → `SerialPortSession.WriteBytes` → `HexText.Format` 记录发送日志。
+`SendCommand` → `MainWindowViewModel.Send` → `Utilities/HexText.TryParse` →（可选）`Utilities/ModbusCrc16.AppendCrc` → `SerialPortSession.WriteBytes` → `HexText.Format` 记录发送日志。
 
 ### ADC 采集
 
-串口后台缓冲 → UI 定时取出 → `_adcLineBuffer` 拼接完整行 → `ProcessAdcLine` 解析 `Sensor Voltage:` → `OnAdcValue` 更新界面、判定区间并按规则写入 TXT。
+串口后台缓冲 → ViewModel 定时取出 → `Services/AdcCollectionService` 拼接完整行并解析 `Sensor Voltage:` → ViewModel 绑定 ADC 状态并按服务规则写入 TXT。
 
 ### Modbus TCP 读取
 
-`MainWindow` 验证界面输入 → `ModbusTcpSession.ConnectAsync` 建立连接 → `ReadRegistersAsync` 发送功能码 03/04 请求并校验响应 → 返回寄存器和帧数据供界面显示。
+`MainWindowViewModel` 验证绑定输入 → `ModbusTcpSession.ConnectAsync` 建立连接 → `ReadRegistersAsync` 发送功能码 03/04 请求并校验响应 → ViewModel 暴露寄存器和帧文本供界面显示。

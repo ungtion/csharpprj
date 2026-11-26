@@ -75,7 +75,7 @@ DependencyObject
 </DockPanel>
 ```
 
-顺序很重要：**先写的先占位置**。你项目 `MainWindow.xaml:80` 的侧边栏就是这个。
+顺序很重要：**先写的先占位置**。项目 `Views/MainWindow.xaml` 的侧边栏就是这个。
 
 ## 1.4 WrapPanel —— 排不下自动换行
 
@@ -97,7 +97,7 @@ DependencyObject
 </UniformGrid>
 ```
 
-你项目 `MainWindow.xaml:223` 的四个指标卡就是它。
+项目 `Views/MainWindow.xaml` 的四个指标卡就是它。
 
 ## 1.6 Canvas —— 绝对定位（不参与自动布局）
 
@@ -548,7 +548,7 @@ TipPopup.IsOpen = true;
 </Canvas>
 ```
 
-你的项目 `MainWindow.xaml:490` 那张趋势图就是手搓 `Polyline` 画的。
+项目 `Views/MainWindow.xaml` 的趋势图就是手搓 `Polyline` 画的。
 
 ---
 
@@ -641,7 +641,7 @@ if (dlg.ShowDialog() == true)
 
 # 十、你项目现状对照表
 
-已用到的（`MainWindow.xaml` 统计）：
+已用到的（`Views/MainWindow.xaml` 统计）：
 
 | 控件 | 次数 | 位置 |
 |---|---|---|
@@ -715,4 +715,4 @@ if (dlg.ShowDialog() == true)
 | `Rectangle`/`Ellipse`/`Line`/`Polyline`/`Polygon`/`Path` | 图形 | `Fill`/`Stroke`/`Points`/`Data` |
 | `MediaElement` | 音视频 | `Source`/`LoadedBehavior` |
 
-需要我把其中某个（比如 **DataGrid 改造报警页** 或 **ToggleButton 控制泵启停**）直接落地到你 `MainWindow.xaml` 里吗？
+需要我把其中某个（比如 **DataGrid 改造报警页** 或 **ToggleButton 控制泵启停**）直接落地到 `Views/MainWindow.xaml` 里吗？

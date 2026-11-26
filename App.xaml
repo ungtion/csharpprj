@@ -1,7 +1,7 @@
 <Application x:Class="CSharpProject.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+             StartupUri="Views/MainWindow.xaml">
     <Application.Resources>
         <!-- 应用级基础颜色资源；Window.Resources 中的监控中心色板覆盖具体页面视觉。 -->
         <SolidColorBrush x:Key="InkBrush" Color="#202735" />

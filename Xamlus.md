@@ -143,7 +143,7 @@ CornerRadius 用于圆角边框。
 WPF 中的宽高通常是设备无关单位，不直接等同于显示器的物理像素。
 
 11. 修改后应构建验证，不要改生成文件
-修改 XAML 后，应运行项目或执行构建，以便及时发现标签、资源、名称或事件错误。建议修改源文件 MainWindow.xaml 和 MainWindow.xaml.cs，不要编辑 obj 目录里的 .g.cs 文件；它是由 XAML 自动生成的，重新构建时会覆盖。
+修改 XAML 后，应运行项目或执行构建，以便及时发现标签、资源、名称或绑定错误。主窗口源文件位于 `Views/MainWindow.xaml` 和 `Views/MainWindow.xaml.cs`；不要编辑 `obj` 目录里的 `.g.cs` 文件，它们由 XAML 自动生成，重新构建时会覆盖。
 
 主程序调用xaml
 **实用顺序：**先改布局或样式，再确认资源键和控件名称，接着检查关联的 C# 事件，最后构建并运行验证。
@@ -326,11 +326,18 @@ private void OnSerialData(object? sender, SerialDataReceivedEventArgs e)
 
 | 文件 | 职责 |
 |---|---|
-| `MainWindow.xaml` | 界面布局；`Window.Resources` 里集中定义主题色板（`BrandBrush`、`StateDangerBrush` 等），代码通过 `ThemeBrush("键名")` 取用，颜色只维护一份 |
-| `MainWindow.xaml.cs` | 页面切换、模拟数据刷新、串口区域的界面交互；不直接操作 `SerialPort` |
-| `SerialPortSession.cs` | 串口连接封装：打开/关闭/发送，后台线程只把收到的数据写进内部缓冲区，界面线程用 `TryTakePendingText` 批量取走；读失败通过 `TryTakeFault` 上报 |
-| `HexText.cs` | 十六进制文本解析与格式化（`01 03 00 00 00 0A` ↔ `byte[]`） |
-| `ModbusCrc16.cs` | CRC-16/MODBUS 计算与帧尾追加（低字节在前） |
-| `App.xaml.cs` | 应用级入口；把界面线程上未处理的异常转成提示框，避免直接退出 |
+| `Views/MainWindow.xaml` | 界面布局、ViewModel 数据绑定、命令绑定和视图样式；主题色板集中定义在 `Window.Resources` |
+| `Views/MainWindow.xaml.cs` | 创建 ViewModel、设置 `DataContext`，并在窗口关闭时释放资源 |
+| `ViewModels/MainWindowViewModel.cs` | 页面状态、模拟数据刷新、界面命令及设备服务协调 |
+| `ViewModels/ObservableObject.cs` / `ViewModels/RelayCommand.cs` | 属性变更通知和 WPF 命令基础设施 |
+| `Services/IInteractionService.cs` / `Views/WpfInteractionService.cs` | 抽象并实现文件选择、剪贴板等视图交互 |
+| `Services/AdcCollectionService.cs` | ADC 接收文本解析、区间判定和记录文件写入 |
+| `Communication/SerialPortSession.cs` | 串口连接封装：打开/关闭/发送，后台线程只把收到的数据写进内部缓冲区，界面线程用 `TryTakePendingText` 批量取走；读失败通过 `TryTakeFault` 上报 |
+| `Utilities/HexText.cs` | 十六进制文本解析与格式化（`01 03 00 00 00 0A` ↔ `byte[]`） |
+| `Utilities/ModbusCrc16.cs` | CRC-16/MODBUS 计算与帧尾追加（低字节在前） |
+| `Communication/ModbusTcpSession.cs` | Modbus TCP 连接及只读寄存器读取 |
+| `Application/App.xaml.cs` | 应用级入口；把界面线程上未处理的异常转成提示框，避免直接退出 |
 
-约定：串口数据永远不直接跨线程写控件；界面状态（按钮文案、可用性、状态文字）统一由 `UpdateSerialConnectionUi` 切换。
+约定：串口数据永远不直接跨线程写控件；XAML 通过绑定显示 ViewModel 状态、通过 `ICommand` 发起操作；串口缓冲区只由 ViewModel 定时取出并更新可绑定属性。
+
+C# 文件按职责分类存放在 `Application/`、`Views/`、`ViewModels/`、`Services/`、`Communication/` 和 `Utilities/` 中。窗口 XAML 与 code-behind 保持在同一个 `Views/` 目录。

@@ -105,9 +105,9 @@ git push
 目的	命令
 看改了哪些文件	git status
 看具体改了什么	git diff
-只提交部分文件	git add MainWindow.xaml MainWindow.xaml.cs
+只提交部分文件	git add Views/MainWindow.xaml Views/MainWindow.xaml.cs
 看提交历史	git --no-pager log --oneline -10
-撤销未提交的改动	git restore MainWindow.xaml
+撤销未提交的改动	git restore Views/MainWindow.xaml
 改完提交信息写错了	git commit --amend -m "新的说明" （未推送前才安全）
 两个 remote 的区别
 remote	地址	推送命令
@@ -119,7 +119,7 @@ origin	192.168.92.56:9527/sys/cashrp	git push origin main
 bin/ 和 obj/ 已被 .gitignore 忽略，不用手动排除；如果你新增了配置/密钥文件，记得先加进 .gitignore，别把密码、令牌提交上去。
 新增的文件必须 git add，否则不会进提交（用 git add -A 最省事）。
 push 被拒（rejected） 说明远端有你本地没有的提交：先 git pull --rebase 再 git push。
-MainWindow.xaml.cs 等文件被运行时锁定 导致 build 失败时，先关掉正在运行的程序（Get-Process CSharpProject | Stop-Process -Id $_.Id）。注意这里用 -Id 指定进程。
+Views/MainWindow.xaml.cs 等文件被运行时锁定导致 build 失败时，先关掉正在运行的程序（Get-Process CSharpProject | Stop-Process -Id $_.Id）。注意这里用 -Id 指定进程。
 提交前跑一次 dotnet build，避免把编译不过的版本推上去。当前项目构建是 0 error / 0 warning。
 需要的话我可以帮你加一个 push.ps1 一键脚本（自动 build → add → commit → pull --rebase → push），或者把两个 remote 的推送合并成一条命令。
 
